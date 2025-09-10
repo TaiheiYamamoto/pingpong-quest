@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useToast } from "./components/Toast";
 
 /** ---------- domain types ---------- */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -187,6 +188,7 @@ export default function Page() {
 
   const [preview, setPreview] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
+  const { push } = useToast();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
@@ -208,22 +210,28 @@ export default function Page() {
           ベストセラー著者デイビッド・セイン率いるAtoZ English。日本語堪能な英語ネイティブ、翻訳・教育のスペシャリストが+αのサポート。
         </p>
         <button
-          onClick={async () => {
-            try {
-              setLoading(true);
-              const plan = await fetchCurriculum(demand);
-              setPreview(plan);
-            } catch (e) {
-              console.error(e);
-              alert("生成に失敗しました。APIキーやネットワークをご確認ください。");
-            } finally {
-              setLoading(false);
-            }
-          }}
-          className="mt-6 px-4 py-2 rounded-xl bg-black text-white text-sm"
-        >
-          {loading ? "生成中..." : "プランを自動生成（プレビュー）"}
-        </button>
+  onClick={async () => {
+    try {
+      setLoading(true);
+      const plan = await fetchCurriculum(demand);
+      setPreview(plan);
+    } catch (e) {
+      console.error(e);
+      // ここを alert からトーストに変更
+      push({
+        kind: "error",
+        title: "生成に失敗しました",
+        message: "APIキーやネットワークをご確認ください。",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }}
+  className="mt-6 px-4 py-2 rounded-xl bg-black text-white text-sm"
+>
+  {loading ? "生成中..." : "プランを自動生成（プレビュー）"}
+</button>
+
       </section>
 
       {/* demand form */}
