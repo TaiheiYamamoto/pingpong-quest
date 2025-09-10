@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useToast } from "./components/Toast";
+import RoleplayWidget from "./components/RoleplayWidget";
 
 /** ---------- domain types ---------- */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -68,6 +69,31 @@ async function fetchCurriculum(demand: Demand): Promise<Plan> {
   const text = await res.text();
   if (!res.ok) throw new Error(text || "API error");
   return JSON.parse(text) as Plan;
+}
+
+/** ---------- loading skeleton ---------- */
+function PreviewSkeleton() {
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 rounded-2xl border bg-white p-6 animate-pulse">
+        <div className="h-4 w-32 bg-gray-200 rounded" />
+        <div className="mt-3 h-6 w-64 bg-gray-200 rounded" />
+        <div className="mt-4 space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-3 bg-gray-200 rounded w-full" />
+          ))}
+        </div>
+      </div>
+      <div className="rounded-2xl border bg-white p-6 animate-pulse">
+        <div className="h-4 w-28 bg-gray-200 rounded" />
+        <div className="mt-3 space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-10 bg-gray-200 rounded" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** ---------- form component ---------- */
@@ -209,37 +235,61 @@ export default function Page() {
         <p className="mt-4 text-gray-700">
           ベストセラー著者デイビッド・セイン率いるAtoZ English。日本語堪能な英語ネイティブ、翻訳・教育のスペシャリストが+αのサポート。
         </p>
-        <button
-  onClick={async () => {
-    try {
-      setLoading(true);
-      const plan = await fetchCurriculum(demand);
-      setPreview(plan);
-    } catch (e) {
-      console.error(e);
-      // ここを alert からトーストに変更
-      push({
-        kind: "error",
-        title: "生成に失敗しました",
-        message: "APIキーやネットワークをご確認ください。",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }}
-  className="mt-6 px-4 py-2 rounded-xl bg-black text-white text-sm"
->
-  {loading ? "生成中..." : "プランを自動生成（プレビュー）"}
-</button>
 
+        {/* 生成ボタン（トースト付き） */}
+        <button
+          onClick={async () => {
+            try {
+              push({ kind: "info", title: "生成を開始しました", message: "少しお待ちください…" });
+              setLoading(true);
+              const plan = await fetchCurriculum(demand);
+              setPreview(plan);
+              push({ kind: "success", title: "プランを生成しました", message: "プレビュー欄をご確認ください。" });
+            } catch (e) {
+              console.error(e);
+              push({
+                kind: "error",
+                title: "生成に失敗しました",
+                message: "APIキーやネットワークをご確認ください。",
+              });
+            } finally {
+              setLoading(false);
+            }
+          }}
+          className="mt-6 px-4 py-2 rounded-xl bg-black text-white text-sm"
+        >
+          {loading ? "生成中..." : "プランを自動生成（プレビュー）"}
+        </button>
+      </section>
+
+      {/* AtoZ差別化ブロック */}
+      <section className="max-w-6xl mx-auto px-4 pb-8">
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="rounded-2xl border bg-white p-5">
+            <h3 className="font-semibold">PingPongメソッド</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              デイビッド・セイン監修。短い往復（Ping→Pong）で即応力を鍛える実践設計。
+            </p>
+          </div>
+          <div className="rounded-2xl border bg-white p-5">
+            <h3 className="font-semibold">AI + コーチの併走</h3>
+            <p className="mt-2 text-sm text-gray-600">日本語OKの英語ネイティブが要点を補強。弱点にピンポイント介入。</p>
+          </div>
+          <div className="rounded-2xl border bg-white p-5">
+            <h3 className="font-semibold">書籍コンテンツ連携</h3>
+            <p className="mt-2 text-sm text-gray-600">ベストセラー教材と接続。AIだけでは届かない＋αの学習体験。</p>
+          </div>
+        </div>
       </section>
 
       {/* demand form */}
       <DemandForm demand={demand} setDemand={setDemand} />
 
       {/* preview */}
-      <section id="preview" className="max-w-6xl mx-auto px-4 pb-16">
-        {preview ? (
+      <section id="preview" className="max-w-6xl mx-auto px-4 pb-10">
+        {loading ? (
+          <PreviewSkeleton />
+        ) : preview ? (
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 rounded-2xl border bg-white p-6">
               <div className="text-sm text-gray-500">カリキュラムプレビュー</div>
@@ -286,6 +336,15 @@ export default function Page() {
             まだプランは未生成です。「プランを自動生成」を押すとプレビューが表示されます。
           </div>
         )}
+      </section>
+
+      {/* ▼▼ 音声ロールプレイ：プレビューの下 ▼▼ */}
+      <section className="max-w-6xl mx-auto px-4 pb-16">
+        <h2 className="text-lg font-semibold mb-3">音声ロールプレイ（最小実装）</h2>
+        <RoleplayWidget
+          scene={demand.constraints.scenes[0] ?? "menu"}
+          level={demand.level.cefr}
+        />
       </section>
 
       {/* 任意：ビルドタグ（ENVでキャッシュ更新する運用用。表示は隠します） */}
