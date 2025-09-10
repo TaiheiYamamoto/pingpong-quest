@@ -71,7 +71,7 @@ async function fetchCurriculum(demand: Demand): Promise<Plan> {
 
 /** ---------- page ---------- */
 export default function Page() {
-  const [demand, setDemand] = useState<Demand>({
+  const [demand] = useState<Demand>({
     profile: {
       ageRange: "30s",
       gender: "male",
@@ -138,12 +138,12 @@ export default function Page() {
               <h3 className="text-lg font-semibold mt-1">{preview.track}</h3>
 
               <ul className="mt-2 text-sm text-gray-700 list-disc list-inside">
-                {preview.weekly.map((w) => (
+                {preview.weekly.map((w: WeekItem) => (
                   <li key={w.week}>
                     Week {w.week}: {w.goal}
                     {w.microLessons?.length > 0 && (
                       <ul className="ml-5 list-disc">
-                        {w.microLessons.map((m, i) => (
+                        {w.microLessons.map((m: MicroLesson, i: number) => (
                           <li key={`${w.week}-${i}`}>
                             {m.type === "roleplay"
                               ? `ロールプレイ：${m.scene}`
@@ -164,7 +164,7 @@ export default function Page() {
             <div className="rounded-2xl border bg-white p-6">
               <div className="text-sm text-gray-500">本日のセッション</div>
               <ul className="mt-2 text-sm text-gray-700 space-y-2">
-                {preview.todaySession.flow.map((s, i) => (
+                {preview.todaySession.flow.map((s: Step, i: number) => (
                   <li key={i} className="rounded-lg border p-3">
                     {i + 1}. {labelStep(s.step)}
                   </li>
