@@ -1,11 +1,14 @@
 // app/api/roleplay/route.ts
+import type { NextRequest } from "next/server";
+
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 type RoleReq = { scene: string; userUtterance: string; level: CEFR };
 type RoleResp = { reply: string; tips: string[]; score: number };
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const body = (await req.json()) as RoleReq;
 
   const system =
@@ -39,7 +42,6 @@ export async function POST(req: Request) {
   const data = await r.json();
   const raw = (data?.choices?.[0]?.message?.content as string) ?? "{}";
 
-  // 念のため囲みを除去してパース
   let json: RoleResp = { reply: "", tips: [], score: 60 };
   try {
     json = JSON.parse(raw) as RoleResp;

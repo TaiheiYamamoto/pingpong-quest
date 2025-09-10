@@ -1,8 +1,11 @@
 // app/api/stt/route.ts
-export const runtime = "nodejs";
+import type { NextRequest } from "next/server";
 
-export async function POST(req: Request) {
-  const form = await req.formData();
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(_req: NextRequest) {
+  const form = await _req.formData();
   const file = form.get("audio") as File | null;
   if (!file) return new Response(JSON.stringify({ error: "no file" }), { status: 400 });
 
