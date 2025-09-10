@@ -2,8 +2,9 @@
 
 import React, { useState } from "react";
 
-/** ---------- types ---------- */
+/** ---------- domain types ---------- */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+
 type Demand = {
   profile: {
     ageRange: "10s" | "20s" | "30s" | "40s" | "50s+";
@@ -17,18 +18,47 @@ type Demand = {
   prefs: { lang: "ja" | "en"; mode: "ai_only" | "ai_plus_coach" | "ai_plus_books" | "full_mix" };
 };
 
+type Step =
+  | { step: "diagnostic_mini_test" }
+  | { step: "listen_and_repeat" }
+  | { step: "roleplay_ai"; scene: string }
+  | { step: "feedback" };
+
+type MicroLesson =
+  | { type: "phrasepack"; title: string }
+  | { type: "roleplay"; scene: string }
+  | { type: "listening"; focus: string };
+
+type WeekItem = {
+  week: number;
+  goal: string;
+  microLessons: MicroLesson[];
+};
+
+type Plan = {
+  track: string;
+  weekly: WeekItem[];
+  todaySession: { durationMin: number; flow: Step[] };
+  kpis: string[];
+};
+
 /** ---------- helpers ---------- */
-function labelStep(step: string) {
+function labelStep(step: Step["step"]) {
   switch (step) {
-    case "diagnostic_mini_test": return "診断ミニテスト";
-    case "listen_and_repeat":    return "音読＆リピート";
-    case "roleplay_ai":          return "AIロールプレイ";
-    case "feedback":             return "フィードバック";
-    default: return step;
+    case "diagnostic_mini_test":
+      return "診断ミニテスト";
+    case "listen_and_repeat":
+      return "音読＆リピート";
+    case "roleplay_ai":
+      return "AIロールプレイ";
+    case "feedback":
+      return "フィードバック";
+    default:
+      return step;
   }
 }
 
-async function fetchCurriculum(demand: any) {
+async function fetchCurriculum(demand: Demand): Promise<Plan> {
   const res = await fetch("/api/curriculum", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -36,115 +66,29 @@ async function fetchCurriculum(demand: any) {
   });
   const text = await res.text();
   if (!res.ok) throw new Error(text || "API error");
-  return JSON.parse(text);
-}
-function DemandForm({
-  demand,
-  setDemand,
-}: {
-  demand: Demand;
-  setDemand: React.Dispatch<React.SetStateAction<Demand>>;
-}) {
-  const sceneOptions = ["menu", "allergy", "payment", "directions"];
-
-  const toggleScene = (s: string) =>
-    setDemand((d) => {
-      const has = d.constraints.scenes.includes(s);
-      return {
-        ...d,
-        constraints: {
-          ...d.constraints,
-          scenes: has
-            ? d.constraints.scenes.filter((x) => x !== s)
-            : [...d.constraints.scenes, s],
-        },
-      };
-    });
-
-  return (
-    <div className="max-w-6xl mx-auto px-4 pb-6">
-      <div className="rounded-2xl border bg-white p-6">
-        <h2 className="text-lg font-semibold">ニーズ入力（簡易）</h2>
-
-        {/* 業種 */}
-        <div className="mt-4">
-          <label className="text-sm text-gray-600">業種</label>
-          <select
-            className="mt-1 w-full rounded-lg border px-3 py-2"
-            value={demand.profile.industry}
-            onChange={(e) =>
-              setDemand((d) => ({
-                ...d,
-                profile: { ...d.profile, industry: e.target.value as any },
-              }))
-            }
-          >
-            <option value="food_service">飲食</option>
-            <option value="hotel">ホテル</option>
-            <option value="retail">小売</option>
-            <option value="transport">交通</option>
-            <option value="other">その他</option>
-          </select>
-        </div>
-
-        {/* 1日学習時間 */}
-        <div className="mt-4">
-          <label className="text-sm text-gray-600">1日の学習時間（分）</label>
-          <input
-            type="number"
-            min={5}
-            max={60}
-            className="mt-1 w-full rounded-lg border px-3 py-2"
-            value={demand.constraints.minutesPerDay}
-            onChange={(e) =>
-              setDemand((d) => ({
-                ...d,
-                constraints: {
-                  ...d.constraints,
-                  minutesPerDay: Number(e.target.value || 0),
-                },
-              }))
-            }
-          />
-        </div>
-
-        {/* 重点シーン */}
-        <div className="mt-4">
-          <div className="text-sm text-gray-600">重点シーン（複数選択可）</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {sceneOptions.map((s) => {
-              const selected = demand.constraints.scenes.includes(s);
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => toggleScene(s)}
-                  className={`px-3 py-1 rounded-full text-sm border transition ${
-                    selected
-                      ? "bg-black text-white border-black"
-                      : "bg-white text-gray-700 border-gray-300 hover:border-black"
-                  }`}
-                >
-                  {s}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return JSON.parse(text) as Plan;
 }
 
 /** ---------- page ---------- */
 export default function Page() {
-  const [demand] = useState<Demand>({
-    profile: { ageRange: "30s", gender: "male", role: "restaurant_staff", industry: "food_service", useCase: "inbound_service" },
-    level: { selfReport: "英検3級 / 中学英語程度", cefr: "A2", knownIssues: ["listening", "speaking_fluency"] },
+  const [demand, setDemand] = useState<Demand>({
+    profile: {
+      ageRange: "30s",
+      gender: "male",
+      role: "restaurant_staff",
+      industry: "food_service",
+      useCase: "inbound_service",
+    },
+    level: {
+      selfReport: "英検3級 / 中学英語程度",
+      cefr: "A2",
+      knownIssues: ["listening", "speaking_fluency"],
+    },
     constraints: { minutesPerDay: 20, deadlineWeeks: 8, scenes: ["menu", "allergy", "payment", "directions"] },
     prefs: { lang: "ja", mode: "full_mix" },
   });
-  const [preview, setPreview] = useState<any | null>(null);
+
+  const [preview, setPreview] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
 
   return (
@@ -184,7 +128,6 @@ export default function Page() {
           {loading ? "生成中..." : "プランを自動生成（プレビュー）"}
         </button>
       </section>
-<DemandForm demand={demand} setDemand={setDemand} />
 
       {/* preview */}
       <section id="preview" className="max-w-6xl mx-auto px-4 pb-16">
@@ -193,17 +136,22 @@ export default function Page() {
             <div className="lg:col-span-2 rounded-2xl border bg-white p-6">
               <div className="text-sm text-gray-500">カリキュラムプレビュー</div>
               <h3 className="text-lg font-semibold mt-1">{preview.track}</h3>
+
               <ul className="mt-2 text-sm text-gray-700 list-disc list-inside">
-                {(preview.weekly ?? []).map((w: any) => (
+                {preview.weekly.map((w) => (
                   <li key={w.week}>
-                    Week {w.week}: {w.goal || "（目標未取得）"}
-                    {Array.isArray(w.microLessons) && (
+                    Week {w.week}: {w.goal}
+                    {w.microLessons?.length > 0 && (
                       <ul className="ml-5 list-disc">
-                        {w.microLessons.map((m: any, i: number) => (
-                          <li key={i}>
-                            {m.type === "roleplay" ? `ロールプレイ：${m.scene}` :
-                             m.type === "phrasepack" ? `フレーズ：${m.title}` :
-                             m.type === "listening" ? `リスニング：${m.focus}` : ""}
+                        {w.microLessons.map((m, i) => (
+                          <li key={`${w.week}-${i}`}>
+                            {m.type === "roleplay"
+                              ? `ロールプレイ：${m.scene}`
+                              : m.type === "phrasepack"
+                              ? `フレーズ：${m.title}`
+                              : m.type === "listening"
+                              ? `リスニング：${m.focus}`
+                              : ""}
                           </li>
                         ))}
                       </ul>
@@ -216,11 +164,13 @@ export default function Page() {
             <div className="rounded-2xl border bg-white p-6">
               <div className="text-sm text-gray-500">本日のセッション</div>
               <ul className="mt-2 text-sm text-gray-700 space-y-2">
-                {(preview.todaySession?.flow ?? []).map((s: any, i: number) => (
-                  <li key={i} className="rounded-lg border p-3">{i + 1}. {labelStep(s.step)}</li>
+                {preview.todaySession.flow.map((s, i) => (
+                  <li key={i} className="rounded-lg border p-3">
+                    {i + 1}. {labelStep(s.step)}
+                  </li>
                 ))}
               </ul>
-              <div className="mt-4 text-xs text-gray-500">KPI: {(preview.kpis ?? []).join(", ")}</div>
+              <div className="mt-4 text-xs text-gray-500">KPI: {preview.kpis.join(", ")}</div>
             </div>
           </div>
         ) : (
