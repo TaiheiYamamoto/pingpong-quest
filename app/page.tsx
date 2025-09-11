@@ -43,21 +43,6 @@ type Plan = {
 };
 
 /** ---------- helpers ---------- */
-function labelStep(step: Step["step"]) {
-  switch (step) {
-    case "diagnostic_mini_test":
-      return "診断ミニテスト";
-    case "listen_and_repeat":
-      return "音読＆リピート";
-    case "roleplay_ai":
-      return "AIロールプレイ";
-    case "feedback":
-      return "フィードバック";
-    default:
-      return step;
-  }
-}
-
 async function fetchCurriculum(demand: Demand): Promise<Plan> {
   const res = await fetch("/api/curriculum", {
     method: "POST",
@@ -69,25 +54,71 @@ async function fetchCurriculum(demand: Demand): Promise<Plan> {
   return JSON.parse(text) as Plan;
 }
 
-/** ---------- normalize (中身が空でも崩れないよう補正) ---------- */
-function normalizePlan(raw: any, demand: Demand): Plan {
+// 安全に unknown を読むためのユーティリティ
+type UnknownRecord = Record<string, unknown>;
+const isObject = (v: unknown): v is UnknownRecord => typeof v === "object" && v !== null;
+const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
+const num = (v: unknown, fallback = 0): number =>
+  typeof v === "number" && Number.isFinite(v) ? v : fallback;
+const arr = <T = unknown>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+// Step に正規化
+type RawStep = string | UnknownRecord;
+const getScene = (v: unknown): string | undefined => {
+  if (!isObject(v)) return undefined;
+  const sc = (v as { scene?: unknown }).scene;
+  return typeof sc === "string" ? sc : undefined;
+};
+function toStep(x: RawStep, defaultScene: string): Step | null {
+  const text =
+    typeof x === "string"
+      ? x
+      : str((x as UnknownRecord).step) ||
+        str((x as UnknownRecord).type) ||
+        str((x as UnknownRecord).label);
+
+  if (/diagnostic|診断/i.test(text)) return { step: "diagnostic_mini_test" };
+  if (/listen|repeat|音読|リピート/i.test(text)) return { step: "listen_and_repeat" };
+  if (/roleplay|ロールプレイ/i.test(text))
+    return { step: "roleplay_ai", scene: getScene(x) ?? defaultScene };
+  if (/feedback|フィードバック|振り返り/i.test(text)) return { step: "feedback" };
+  return null;
+}
+
+// MicroLesson に正規化
+type RawLesson = string | UnknownRecord;
+function toLesson(m: RawLesson): MicroLesson | null {
+  if (typeof m === "string") {
+    const s = m.trim();
+    if (!s) return null;
+    if (/roleplay|ロールプレイ/i.test(s)) return { type: "roleplay", scene: "menu" };
+    if (/listen|リスニング/i.test(s)) return { type: "listening", focus: s };
+    return { type: "phrasepack", title: s };
+  }
+  if (!isObject(m)) return null;
+  const t = str(m.type);
+  if (t === "roleplay") return { type: "roleplay", scene: str((m as { scene?: unknown }).scene, "menu") };
+  if (t === "listening") return { type: "listening", focus: str((m as { focus?: unknown }).focus, "") };
+  if (t === "phrasepack") return { type: "phrasepack", title: str((m as { title?: unknown }).title, "") };
+  // fallback: 文字列化してフレーズ扱い
+  const asText =
+    str((m as { title?: unknown }).title) ||
+    str((m as { label?: unknown }).label) ||
+    str((m as { name?: unknown }).name);
+  if (asText) return { type: "phrasepack", title: asText };
+  return null;
+}
+
+/** unknown な API 返却を Plan に正規化 */
+function normalizePlan(raw: unknown, demand: Demand): Plan {
   const scene0 = demand.constraints.scenes?.[0] ?? "menu";
 
-  // todaySession.flow を Step[] に正規化
-  const rawFlow: any[] = raw?.todaySession?.flow ?? [];
-  const mapOne = (x: any): Step | null => {
-    if (!x) return null;
-    // 文字列でも、type/labelでも受ける
-    const s = (typeof x === "string" ? x : x.step || x.type || x.label || "").toString();
-    const jp = s.replace(/\s/g, "");
-    if (/diagnostic|診断/i.test(s)) return { step: "diagnostic_mini_test" };
-    if (/listen|repeat|音読|リピート/i.test(s)) return { step: "listen_and_repeat" };
-    if (/roleplay|ロールプレイ/i.test(s)) return { step: "roleplay_ai", scene: x.scene || scene0 };
-    if (/feedback|振り返り|フィードバック/i.test(s)) return { step: "feedback" };
-    // よく分からない場合はスキップ
-    return null;
-  };
-  const flow: Step[] = rawFlow.map(mapOne).filter(Boolean) as Step[];
+  const r = isObject(raw) ? raw : ({} as UnknownRecord);
+
+  // todaySession
+  const todayObj = isObject(r.todaySession) ? (r.todaySession as UnknownRecord) : ({} as UnknownRecord);
+  const rawFlow = arr<unknown>(todayObj.flow) as RawStep[];
+  const flow = rawFlow.map((x) => toStep(x, scene0)).filter(Boolean) as Step[];
   const DEFAULT_FLOW: Step[] = [
     { step: "diagnostic_mini_test" },
     { step: "listen_and_repeat" },
@@ -95,45 +126,31 @@ function normalizePlan(raw: any, demand: Demand): Plan {
     { step: "feedback" },
   ];
 
-  // weekly microLessons をきれいに
-  const weeklySrc: any[] = Array.isArray(raw?.weekly) ? raw.weekly : [];
-  const weekly: WeekItem[] = weeklySrc
-    .slice(0, 8) // 8週まで
-    .map((w, i) => {
-      const lessonsRaw: any[] = Array.isArray(w?.microLessons) ? w.microLessons : [];
-      const lessons: MicroLesson[] = lessonsRaw
-        .map((m) => {
-          if (!m) return null;
-          if (typeof m === "string") {
-            const s = m.trim();
-            if (!s) return null;
-            if (/roleplay|ロールプレイ/i.test(s)) return { type: "roleplay", scene: "menu" } as MicroLesson;
-            if (/listen|リスニング/i.test(s)) return { type: "listening", focus: s } as MicroLesson;
-            return { type: "phrasepack", title: s } as MicroLesson;
-          }
-          if (m.type === "roleplay" && !m.scene) return { ...m, scene: "menu" };
-          return m as MicroLesson;
-        })
-        .filter(Boolean) as MicroLesson[];
-
-      return {
-        week: Number(w?.week ?? i + 1),
-        goal: String(w?.goal || "").trim() || `Week ${i + 1}`,
-        microLessons: lessons,
-      };
+  // weekly
+  const weeklySrc = arr<unknown>(r.weekly);
+  const weekly: WeekItem[] = weeklySrc.slice(0, 8).map((w, i) => {
+    const rec = isObject(w) ? (w as UnknownRecord) : ({} as UnknownRecord);
+    const microRaw = arr<unknown>(rec.microLessons) as RawLesson[];
+    const lessons = microRaw.map(toLesson).filter(Boolean) as MicroLesson[];
+    return {
+      week: num(rec.week, i + 1),
+      goal: str(rec.goal, `Week ${i + 1}`) || `Week ${i + 1}`,
+      microLessons: lessons,
+    };
     });
 
+  const kpis = arr<unknown>(r.kpis).map((x) => String(x)).filter(Boolean);
+
   return {
-    track: String(raw?.track || "飲食業向け英会話"),
+    track: str(r.track, "飲食業向け英会話"),
     weekly,
     todaySession: {
-      durationMin: Number(raw?.todaySession?.durationMin ?? 20),
+      durationMin: num(todayObj.durationMin, 20),
       flow: flow.length ? flow : DEFAULT_FLOW,
     },
-    kpis:
-      Array.isArray(raw?.kpis) && raw.kpis.length
-        ? raw.kpis.map((x: any) => String(x))
-        : ["weekly_completion_rate", "WPM", "mispronunciation_rate", "dialog_success_rate"],
+    kpis: kpis.length
+      ? kpis
+      : ["weekly_completion_rate", "WPM", "mispronunciation_rate", "dialog_success_rate"],
   };
 }
 
@@ -175,7 +192,6 @@ function DemandForm({
       <div className="rounded-2xl border bg-white p-6">
         <h2 className="text-lg font-semibold">ニーズ入力（簡易）</h2>
 
-        {/* 業種 */}
         <div className="mt-4">
           <label className="text-sm text-gray-600">業種</label>
           <select
@@ -191,7 +207,6 @@ function DemandForm({
           </select>
         </div>
 
-        {/* 1日学習時間 */}
         <div className="mt-4">
           <label className="text-sm text-gray-600">1日の学習時間（分）</label>
           <input
@@ -206,7 +221,6 @@ function DemandForm({
           <p className="mt-1 text-xs text-gray-500">5〜60分の範囲で指定できます。</p>
         </div>
 
-        {/* 重点シーン */}
         <div className="mt-4">
           <div className="text-sm text-gray-600">重点シーン（複数選択可）</div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -250,7 +264,6 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-50 via-white to-white">
-      {/* header */}
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -266,7 +279,6 @@ export default function Page() {
         </div>
       </header>
 
-      {/* hero */}
       <section className="max-w-6xl mx-auto px-4 pt-10 pb-6">
         <h1 className="text-3xl font-extrabold leading-tight bg-gradient-to-r from-fuchsia-600 to-sky-600 bg-clip-text text-transparent">
           最速で“使える英語”を。
@@ -300,20 +312,17 @@ export default function Page() {
         </button>
       </section>
 
-      {/* demand form */}
       <DemandForm demand={demand} setDemand={setDemand} />
 
-      {/* main area：右（本日のセッション）を主役、左（カリキュラム）はサブ */}
       <section id="preview" className="max-w-6xl mx-auto px-4 pb-16">
         {preview ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* 右（主役） */}
+            {/* 右：本日のセッション（主役） */}
             <div className="order-1 lg:order-2 lg:col-span-2 rounded-2xl border bg-white p-6">
               <div className="text-xl font-semibold">本日のセッション</div>
               <p className="text-sm text-gray-500 mt-1">
                 合計 {preview.todaySession.durationMin} 分想定。クリックでステップを切り替えられます。
               </p>
-
               <div className="mt-4">
                 <SessionRunner
                   plan={preview}
@@ -322,36 +331,30 @@ export default function Page() {
                   onEncourage={(k) => setMotivate(k)}
                 />
               </div>
-
-              <div className="mt-6 text-xs text-gray-500">
-                KPI: {preview.kpis.join(", ")}
-              </div>
+              <div className="mt-6 text-xs text-gray-500">KPI: {preview.kpis.join(", ")}</div>
             </div>
 
-            {/* 左（サブ） */}
+            {/* 左：8週間プレビュー（サブ） */}
             <div className="order-2 lg:order-1 lg:col-span-1 rounded-2xl border bg-white p-6">
               <div className="text-sm text-gray-500">カリキュラムプレビュー</div>
               <h3 className="text-lg font-semibold mt-1">{preview.track}</h3>
-
               <ul className="mt-2 text-sm text-gray-700 list-disc list-inside space-y-4">
                 {preview.weekly.map((w: WeekItem) => (
                   <li key={w.week}>
-                    <div className="font-medium">Week {w.week}: {w.goal}</div>
-                    {w.microLessons && w.microLessons.length > 0 ? (
+                    <div className="font-medium">
+                      Week {w.week}: {w.goal}
+                    </div>
+                    {w.microLessons.length > 0 ? (
                       <ul className="ml-5 list-disc">
-                        {w.microLessons
-                          .filter(Boolean)
-                          .map((m: MicroLesson, i: number) => (
-                            <li key={`${w.week}-${i}`}>
-                              {m.type === "roleplay"
-                                ? `ロールプレイ：${m.scene}`
-                                : m.type === "phrasepack"
-                                ? `フレーズ：${m.title}`
-                                : m.type === "listening"
-                                ? `リスニング：${m.focus}`
-                                : ""}
-                            </li>
-                          ))}
+                        {w.microLessons.map((m: MicroLesson, i: number) => (
+                          <li key={`${w.week}-${i}`}>
+                            {m.type === "roleplay"
+                              ? `ロールプレイ：${m.scene}`
+                              : m.type === "phrasepack"
+                              ? `フレーズ：${m.title}`
+                              : `リスニング：${m.focus}`}
+                          </li>
+                        ))}
                       </ul>
                     ) : (
                       <div className="ml-5 text-gray-400 text-xs">（今週の詳細は自動生成中）</div>
@@ -368,7 +371,6 @@ export default function Page() {
         )}
       </section>
 
-      {/* build tag（キャッシュ更新用） */}
       <footer className="sr-only">build: {process.env.NEXT_PUBLIC_BUILD_TAG}</footer>
     </div>
   );
