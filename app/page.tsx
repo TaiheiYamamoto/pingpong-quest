@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useToast } from "./components/Toast";
-import RoleplayWidget from "./components/RoleplayWidget";
+import SessionRunner from "./components/SessionRunner";
 
 /** ---------- domain types ---------- */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -71,32 +71,7 @@ async function fetchCurriculum(demand: Demand): Promise<Plan> {
   return JSON.parse(text) as Plan;
 }
 
-/** ---------- loading skeleton ---------- */
-function PreviewSkeleton() {
-  return (
-    <div className="grid lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2 rounded-2xl border bg-white p-6 animate-pulse">
-        <div className="h-4 w-32 bg-gray-200 rounded" />
-        <div className="mt-3 h-6 w-64 bg-gray-200 rounded" />
-        <div className="mt-4 space-y-2">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-3 bg-gray-200 rounded w-full" />
-          ))}
-        </div>
-      </div>
-      <div className="rounded-2xl border bg-white p-6 animate-pulse">
-        <div className="h-4 w-28 bg-gray-200 rounded" />
-        <div className="mt-3 space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-10 bg-gray-200 rounded" />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** ---------- form component ---------- */
+/** ---------- demand form (簡易) ---------- */
 function DemandForm({
   demand,
   setDemand,
@@ -236,7 +211,6 @@ export default function Page() {
           ベストセラー著者デイビッド・セイン率いるAtoZ English。日本語堪能な英語ネイティブ、翻訳・教育のスペシャリストが+αのサポート。
         </p>
 
-        {/* 生成ボタン（トースト付き） */}
         <button
           onClick={async () => {
             try {
@@ -262,35 +236,14 @@ export default function Page() {
         </button>
       </section>
 
-      {/* AtoZ差別化ブロック */}
-      <section className="max-w-6xl mx-auto px-4 pb-8">
-        <div className="grid md:grid-cols-3 gap-4">
-          <div className="rounded-2xl border bg-white p-5">
-            <h3 className="font-semibold">PingPongメソッド</h3>
-            <p className="mt-2 text-sm text-gray-600">
-              デイビッド・セイン監修。短い往復（Ping→Pong）で即応力を鍛える実践設計。
-            </p>
-          </div>
-          <div className="rounded-2xl border bg-white p-5">
-            <h3 className="font-semibold">AI + コーチの併走</h3>
-            <p className="mt-2 text-sm text-gray-600">日本語OKの英語ネイティブが要点を補強。弱点にピンポイント介入。</p>
-          </div>
-          <div className="rounded-2xl border bg-white p-5">
-            <h3 className="font-semibold">書籍コンテンツ連携</h3>
-            <p className="mt-2 text-sm text-gray-600">ベストセラー教材と接続。AIだけでは届かない＋αの学習体験。</p>
-          </div>
-        </div>
-      </section>
-
       {/* demand form */}
       <DemandForm demand={demand} setDemand={setDemand} />
 
-      {/* preview */}
-      <section id="preview" className="max-w-6xl mx-auto px-4 pb-10">
-        {loading ? (
-          <PreviewSkeleton />
-        ) : preview ? (
+      {/* preview + 本日のセッション（中身つき） */}
+      <section id="preview" className="max-w-6xl mx-auto px-4 pb-16">
+        {preview ? (
           <div className="grid lg:grid-cols-3 gap-6">
+            {/* 左：プレビュー */}
             <div className="lg:col-span-2 rounded-2xl border bg-white p-6">
               <div className="text-sm text-gray-500">カリキュラムプレビュー</div>
               <h3 className="text-lg font-semibold mt-1">{preview.track}</h3>
@@ -319,15 +272,12 @@ export default function Page() {
               </ul>
             </div>
 
+            {/* 右：本日のセッション（実行UI） */}
             <div className="rounded-2xl border bg-white p-6">
-              <div className="text-sm text-gray-500">本日のセッション</div>
-              <ul className="mt-2 text-sm text-gray-700 space-y-2">
-                {preview.todaySession.flow.map((s: Step, i: number) => (
-                  <li key={i} className="rounded-lg border p-3">
-                    {i + 1}. {labelStep(s.step)}
-                  </li>
-                ))}
-              </ul>
+              <div className="text-lg font-semibold">本日のセッション</div>
+              {/* もともとの一覧は SessionRunner 内でクリック切替に対応 */}
+              <SessionRunner plan={preview} demand={demand} setDemand={setDemand} />
+
               <div className="mt-4 text-xs text-gray-500">KPI: {preview.kpis.join(", ")}</div>
             </div>
           </div>
@@ -336,15 +286,6 @@ export default function Page() {
             まだプランは未生成です。「プランを自動生成」を押すとプレビューが表示されます。
           </div>
         )}
-      </section>
-
-      {/* ▼▼ 音声ロールプレイ：プレビューの下 ▼▼ */}
-      <section className="max-w-6xl mx-auto px-4 pb-16">
-        <h2 className="text-lg font-semibold mb-3">音声ロールプレイ（最小実装）</h2>
-        <RoleplayWidget
-          scene={demand.constraints.scenes[0] ?? "menu"}
-          level={demand.level.cefr}
-        />
       </section>
 
       {/* 任意：ビルドタグ（ENVでキャッシュ更新する運用用。表示は隠します） */}
