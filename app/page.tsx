@@ -257,6 +257,46 @@ export default function Page() {
   });
 
   const [preview, setPreview] = useState<Plan | null>(null);
+  // ★ ここから追記（preview の直後）--------------------
+const starterPlan: Plan = {
+  track: "体験セッション",
+  weekly: [
+    {
+      week: 1,
+      goal: "メニューの基本が説明できる",
+      microLessons: [
+        { type: "phrasepack", title: "Welcome to our restaurant." },
+        { type: "phrasepack", title: "Here is the menu." },
+        { type: "listening",  focus: "menu words" },
+        { type: "roleplay",   scene: "menu" },
+      ],
+    },
+    {
+      week: 2,
+      goal: "支払い・アレルギーに対応できる",
+      microLessons: [
+        { type: "phrasepack", title: "Do you have any allergies?" },
+        { type: "phrasepack", title: "Cash or card?" },
+        { type: "roleplay",   scene: "payment" },
+      ],
+    },
+  ],
+  todaySession: {
+    durationMin: 20,
+    flow: [
+      { step: "diagnostic_mini_test" },
+      { step: "listen_and_repeat" },
+      { step: "roleplay_ai", scene: "payment" },
+      { step: "feedback" },
+    ],
+  },
+  kpis: ["weekly_completion_rate", "WPM", "mispronunciation_rate", "dialog_success_rate"],
+};
+
+// preview があればそれを、なければ starterPlan を使う
+const plan: Plan = preview ?? starterPlan;
+// ★ ここまで追記 --------------------------------------
+
   const [loading, setLoading] = useState(false);
   const [motivate, setMotivate] = useState<MotivateKind>("idle");
 
@@ -349,11 +389,13 @@ export default function Page() {
               </p>
               <div className="mt-4">
                 <SessionRunner
-                  plan={preview}
-                  demand={demand}
-                  setDemand={setDemand}
-                  onEncourage={(k) => setMotivate(k)}
-                />
+  plan={plan}
+  demand={demand}
+  setDemand={setDemand}
+  onApplyDemand={(next) => {
+    // ここで fetchCurriculum(next) して plan を更新
+  }}
+/>
               </div>
               <div className="mt-6 text-xs text-gray-500">KPI: {preview.kpis.join(", ")}</div>
             </div>
