@@ -3,8 +3,11 @@
 import React from "react";
 import { useToast } from "./Toast";
 
-/** ====== 型（このファイル内で完結） ====== */
+/* ===== 型 ===== */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+const CEFRS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
+
+type Phrase = { en: string; ja: string };
 
 type Demand = {
   profile: {
@@ -25,8 +28,10 @@ type Step =
   | { step: "roleplay_ai"; scene: string }
   | { step: "feedback" };
 
+/* MicroLesson に phrases を optional で許可（any 回避のため） */
+type PhrasePack = { type: "phrasepack"; title: string; phrases?: Phrase[] };
 type MicroLesson =
-  | { type: "phrasepack"; title: string }
+  | PhrasePack
   | { type: "roleplay"; scene: string }
   | { type: "listening"; focus: string };
 
@@ -39,7 +44,7 @@ type Plan = {
   kpis: string[];
 };
 
-/** ====== 小ユーティリティ ====== */
+/* ===== ラベル ===== */
 const cefrLabel: Record<CEFR, string> = {
   A1: "A1：基礎入門",
   A2: "A2：基礎",
@@ -62,27 +67,30 @@ function labelStep(step: Step["step"]) {
   }
 }
 
-/** ステップ配列のための安定キー */
+/* ステップ配列の安定キー */
 function stepKey(s: Step, idx: number) {
-  if (s.step === "roleplay_ai") return `step-${s.step}-${s.scene}`;
-  return `step-${s.step}-${idx}`; // 役に立つ識別子が無ければ念のため idx を添える
+  return s.step === "roleplay_ai" ? `step-${s.step}-${s.scene}` : `step-${s.step}-${idx}`;
 }
 
-/** ====== Props ====== */
+/* ===== Props ===== */
 type Props = {
   plan: Plan;
   demand: Demand;
   setDemand: React.Dispatch<React.SetStateAction<Demand>>;
   onEncourage?: (kind: "idle" | "start" | "good" | "oops") => void;
-  /** ← 追加：診断適用時に親（page.tsx）で plan を再生成するためのコールバック */
   onApplyDemand?: (next: Demand) => Promise<void> | void;
 };
 
-/** ====== 本体 ====== */
-export default function SessionRunner({ plan, demand, setDemand, onEncourage, onApplyDemand }: Props) {
+/* ===== 本体 ===== */
+export default function SessionRunner({
+  plan,
+  demand,
+  setDemand,
+  onEncourage,
+  onApplyDemand,
+}: Props) {
   const { push } = useToast();
   const [current, setCurrent] = React.useState(0);
-
   const flow = plan.todaySession.flow;
 
   return (
@@ -110,15 +118,9 @@ export default function SessionRunner({ plan, demand, setDemand, onEncourage, on
             demand={demand}
             setDemand={setDemand}
             onDone={(next) => {
-              // 親にも通知したいときはここで
               onApplyDemand?.(next);
-              push({
-                kind: "success",
-                title: "設定を適用しました",
-                message: "今日のセッションに反映しました。",
-              });
+              push({ kind: "success", title: "設定を適用しました", message: "今日のセッションに反映しました。" });
               onEncourage?.("good");
-              // 次のステップへ
               setCurrent((c) => Math.min(c + 1, flow.length - 1));
             }}
             onError={(message) => {
@@ -128,15 +130,10 @@ export default function SessionRunner({ plan, demand, setDemand, onEncourage, on
           />
         )}
 
-        {flow[current]?.step === "listen_and_repeat" && (
-  <ListenAndRepeat plan={plan} demand={demand} />
-)}
+        {flow[current]?.step === "listen_and_repeat" && <ListenAndRepeat plan={plan} demand={demand} />}
 
         {flow[current]?.step === "roleplay_ai" && (
-          <RoleplayBlock
-            key={`rp-${flow[current].scene}`} // シーンが変わるときに内部状態をリセット
-            scene={flow[current].scene}
-          />
+          <RoleplayBlock key={`rp-${flow[current].scene}`} scene={flow[current].scene} />
         )}
 
         {flow[current]?.step === "feedback" && <FeedbackBlock plan={plan} demand={demand} />}
@@ -145,7 +142,7 @@ export default function SessionRunner({ plan, demand, setDemand, onEncourage, on
   );
 }
 
-/** ====== ① 診断ミニテスト ====== */
+/* ===== ① 診断ミニテスト ===== */
 function MiniDiagnostic({
   demand,
   setDemand,
@@ -154,47 +151,44 @@ function MiniDiagnostic({
 }: {
   demand: Demand;
   setDemand: React.Dispatch<React.SetStateAction<Demand>>;
-  /** ← 親に「更新後の demand」を返す */
   onDone: (next: Demand) => void;
   onError: (message: string) => void;
 }) {
-  const goals: Demand["profile"]["useCase"][] = [
+  const goalOptions: Demand["profile"]["useCase"][] = [
     "inbound_service",
     "business",
     "study_abroad",
     "daily_life",
   ];
+  const jpGoal: Record<Demand["profile"]["useCase"], string> = {
+    inbound_service: "インバウンド対応",
+    business: "ビジネス会話",
+    study_abroad: "留学準備",
+    daily_life: "日常会話",
+  };
+
   const scenesMaster = ["menu", "allergy", "payment", "directions"] as const;
   type Scene = (typeof scenesMaster)[number];
 
-  // ローカルUI用の一時状態（フォームの値）
-  const [goal, setGoal] = React.useState<Demand["profile"]["useCase"]>(
-    demand.profile.useCase
-  );
+  const [goal, setGoal] = React.useState<Demand["profile"]["useCase"]>(demand.profile.useCase);
   const [cefr, setCefr] = React.useState<CEFR>(demand.level.cefr);
   const [scenes, setScenes] = React.useState<string[]>(
     demand.constraints.scenes.length ? demand.constraints.scenes : ["menu"]
   );
 
   const toggle = (s: Scene) =>
-    setScenes((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-    );
+    setScenes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
-  /** ← これが “apply()” 本体です */
-  const apply = async () => {
+  const apply = () => {
     try {
-      const chosenScenes = scenes.length ? scenes : ["menu"]; // 念のため1件保証
+      const chosenScenes = scenes.length ? scenes : ["menu"];
       const next: Demand = {
         ...demand,
         profile: { ...demand.profile, useCase: goal },
         level: { ...demand.level, cefr },
         constraints: { ...demand.constraints, scenes: chosenScenes },
       };
-
-      // 自分の state を更新
       setDemand(next);
-      // 親（SessionRunner 呼び出し元 = page.tsx）に通知
       onDone(next);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "不明なエラー";
@@ -206,24 +200,21 @@ function MiniDiagnostic({
     <div className="mt-4 rounded-2xl border p-4">
       <div className="text-sm text-gray-600">ゴール・レベル・シーンを簡易診断します。</div>
 
-      {/* 目的 */}
       <div className="mt-4">
         <label className="text-sm text-gray-600">主目的</label>
         <select
           className="mt-1 w-full rounded-lg border px-3 py-2"
           value={goal}
-          onChange={(e) =>
-            setGoal(e.target.value as Demand["profile"]["useCase"])
-          }
+          onChange={(e) => setGoal(e.target.value as Demand["profile"]["useCase"])}
         >
-          <option value="inbound_service">インバウンド対応</option>
-          <option value="business">ビジネス会話</option>
-          <option value="study_abroad">留学準備</option>
-          <option value="daily_life">日常会話</option>
+          {goalOptions.map((g) => (
+            <option key={g} value={g}>
+              {jpGoal[g]}
+            </option>
+          ))}
         </select>
       </div>
 
-      {/* レベル */}
       <div className="mt-4">
         <label className="text-sm text-gray-600">自己申告レベル</label>
         <select
@@ -231,7 +222,7 @@ function MiniDiagnostic({
           value={cefr}
           onChange={(e) => setCefr(e.target.value as CEFR)}
         >
-          {(["A1", "A2", "B1", "B2", "C1", "C2"] as CEFR[]).map((lv) => (
+          {CEFRS.map((lv) => (
             <option key={lv} value={lv}>
               {cefrLabel[lv]}
             </option>
@@ -239,7 +230,6 @@ function MiniDiagnostic({
         </select>
       </div>
 
-      {/* シーン */}
       <div className="mt-4">
         <div className="text-sm text-gray-600">必要シーン（複数選択可）</div>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -251,9 +241,7 @@ function MiniDiagnostic({
                 type="button"
                 onClick={() => toggle(s)}
                 className={`px-3 py-1 rounded-full text-sm border transition ${
-                  selected
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-gray-700 border-gray-300 hover:border-black"
+                  selected ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-300 hover:border-black"
                 }`}
               >
                 {s}
@@ -263,37 +251,28 @@ function MiniDiagnostic({
         </div>
       </div>
 
-      {/* 適用 */}
       <div className="mt-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={apply}
-          className="rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90"
-        >
+        <button type="button" onClick={apply} className="rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90">
           この内容で開始
         </button>
-        <div className="text-xs text-gray-500">
-          現在の推奨レベル: {cefrLabel[cefr].split("：")[0]}
-        </div>
+        <div className="text-xs text-gray-500">現在の推奨レベル: {cefrLabel[cefr].split("：")[0]}</div>
       </div>
     </div>
   );
 }
 
-/** ====== ② 音読＆リピート（需要ベース＋TTS再生ボタン付き） ====== */
+/* ===== ② 音読＆リピート（フレーズ保持＋TTS） ===== */
+type SceneKey = "menu" | "allergy" | "payment" | "directions";
+type PackByLevel = Record<CEFR, Phrase[]>;
+
 function ListenAndRepeat({ plan, demand }: { plan: Plan; demand: Demand }) {
   const { push } = useToast();
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [loadingIndex, setLoadingIndex] = React.useState<number | null>(null);
   const cacheRef = React.useRef<Map<string, string>>(new Map());
 
-  type Phrase = { en: string; ja: string };
-
-  // シーン別・難易度別の簡易フレーズ集（必要に応じて追記OK）
-  const PACKS: Record<
-    "menu" | "allergy" | "payment" | "directions",
-    { A1: Phrase[]; A2: Phrase[]; B1: Phrase[]; B2: Phrase[]; C1: Phrase[]; C2: Phrase[] }
-  > = {
+  /* スクショの6フレーズを含めた PACKS（完全型付け） */
+  const PACKS = {
     menu: {
       A1: [
         { en: "Welcome! How many?", ja: "いらっしゃいませ。何名様ですか？" },
@@ -419,34 +398,31 @@ function ListenAndRepeat({ plan, demand }: { plan: Plan; demand: Demand }) {
         { en: "Refunds take 3–5 business days.", ja: "返金には3〜5営業日かかります。" },
         { en: "Let me know if you need a company invoice.", ja: "会社用の請求書が必要ならお知らせください。" },
       ],
-      B2: {
-        A1: [] as Phrase[], A2: [] as Phrase[], B1: [] as Phrase[],
-        B2: [
-          { en: "Would you like to split by items or evenly?", ja: "品目ごとに割りますか、等分にしますか？" },
-          { en: "Please confirm the tip policy, if any.", ja: "チップの扱い（必要であれば）をご確認ください。" },
-          { en: "Card authorization may take a moment.", ja: "カード承認に少し時間がかかる場合があります。" },
-          { en: "We can reissue a detailed statement.", ja: "明細は再発行可能です。" },
-          { en: "For large payments, ID may be required.", ja: "高額決済では身分証が必要な場合があります。" },
-          { en: "Let us know if you need currency support.", ja: "通貨サポートが必要ならご連絡ください。" },
-        ],
-        C1: [
-          { en: "We can customize the breakdown for accounting.", ja: "経理向けに内訳をカスタマイズできます。" },
-          { en: "Exchange rate depends on your card issuer.", ja: "為替レートはカード発行会社によります。" },
-          { en: "We can hold the receipt at the front desk.", ja: "レシートはフロントでお預かりできます。" },
-          { en: "Let me ensure all charges are correct.", ja: "請求項目に誤りがないか確認します。" },
-          { en: "We can schedule a later payment if needed.", ja: "必要に応じて後払いの手配も可能です。" },
-          { en: "Please contact us if any discrepancy appears.", ja: "不一致があればご連絡ください。" },
-        ],
-        C2: [
-          { en: "We can coordinate multi-party settlements.", ja: "複数名での精算調整にも対応します。" },
-          { en: "Let us know preferred invoicing terms.", ja: "請求書の希望条件をお知らせください。" },
-          { en: "We ensure compliance with tax requirements.", ja: "税要件の遵守を徹底しています。" },
-          { en: "High-value transactions may need verification.", ja: "高額取引は確認が必要な場合があります。" },
-          { en: "We’ll keep your billing details on file securely.", ja: "請求情報は安全に保管します。" },
-          { en: "Please review the final statement at your convenience.", ja: "最終明細をご都合の良い時にご確認ください。" },
-        ],
-      } as any,
-    } as any,
+      B2: [
+        { en: "Would you like to split by items or evenly?", ja: "品目ごとに割りますか、等分にしますか？" },
+        { en: "Please confirm the tip policy, if any.", ja: "チップの扱い（必要であれば）をご確認ください。" },
+        { en: "Card authorization may take a moment.", ja: "カード承認に少し時間がかかる場合があります。" },
+        { en: "We can reissue a detailed statement.", ja: "明細は再発行可能です。" },
+        { en: "For large payments, ID may be required.", ja: "高額決済では身分証が必要な場合があります。" },
+        { en: "Let us know if you need currency support.", ja: "通貨サポートが必要ならご連絡ください。" },
+      ],
+      C1: [
+        { en: "We can customize the breakdown for accounting.", ja: "経理向けに内訳をカスタマイズできます。" },
+        { en: "Exchange rate depends on your card issuer.", ja: "為替レートはカード発行会社によります。" },
+        { en: "We can hold the receipt at the front desk.", ja: "レシートはフロントでお預かりできます。" },
+        { en: "Let me ensure all charges are correct.", ja: "請求項目に誤りがないか確認します。" },
+        { en: "We can schedule a later payment if needed.", ja: "必要に応じて後払いの手配も可能です。" },
+        { en: "Please contact us if any discrepancy appears.", ja: "不一致があればご連絡ください。" },
+      ],
+      C2: [
+        { en: "We can coordinate multi-party settlements.", ja: "複数名での精算調整にも対応します。" },
+        { en: "Let us know preferred invoicing terms.", ja: "請求書の希望条件をお知らせください。" },
+        { en: "We ensure compliance with tax requirements.", ja: "税要件の遵守を徹底しています。" },
+        { en: "High-value transactions may need verification.", ja: "高額取引は確認が必要な場合があります。" },
+        { en: "We’ll keep your billing details on file securely.", ja: "請求情報は安全に保管します。" },
+        { en: "Please review the final statement at your convenience.", ja: "最終明細をご都合の良い時にご確認ください。" },
+      ],
+    },
     directions: {
       A1: [
         { en: "Go straight, then turn left.", ja: "まっすぐ進んで左に曲がってください。" },
@@ -497,39 +473,33 @@ function ListenAndRepeat({ plan, demand }: { plan: Plan; demand: Demand }) {
         { en: "I can draw a quick sketch for you.", ja: "簡単な略図も描けますよ。" },
       ],
     },
-  };
+  } satisfies Record<SceneKey, PackByLevel>;
 
-  // 使うシーンを決定（診断/プランのいずれか）
+  /* どのシーン・レベルか決定 */
   const selectedScenes = demand.constraints.scenes.length ? demand.constraints.scenes : ["menu"];
   const scene =
-    (plan.todaySession.flow.find((s) => s.step === "roleplay_ai") as
-      | { step: "roleplay_ai"; scene: string }
-      | undefined)?.scene || (selectedScenes[0] as keyof typeof PACKS);
+    (plan.todaySession.flow.find((s) => s.step === "roleplay_ai") as { step: "roleplay_ai"; scene: SceneKey } | undefined)
+      ?.scene || (selectedScenes[0] as SceneKey);
 
-  // CEFRを安全に丸める
-  const lv = (["A1", "A2", "B1", "B2", "C1", "C2"] as CEFR[]).includes(demand.level.cefr)
-    ? demand.level.cefr
-    : "A2";
+  const lv: CEFR = CEFRS.includes(demand.level.cefr) ? demand.level.cefr : "A2";
 
-  // まずはカリキュラム内に具体フレーズがあれば優先（無い想定）
-  const phrasesFromPlan: Phrase[] =
-    plan.weekly
-      .flatMap((w) => w.microLessons)
-      .filter((m) => (m as any).phrases)
-      .flatMap((m) => ((m as any).phrases as Phrase[]))
-      .slice(0, 8) || [];
+  /* plan に phrases があれば優先（型ガードで any 回避） */
+  const isPhrasePackWithPhrases = (m: MicroLesson): m is Required<PhrasePack> =>
+    m.type === "phrasepack" && Array.isArray(m.phrases);
 
-  // 無ければローカルPACKSから
+  const phrasesFromPlan: Phrase[] = plan.weekly
+    .flatMap((w) => w.microLessons)
+    .filter(isPhrasePackWithPhrases)
+    .flatMap((m) => m.phrases)
+    .slice(0, 8);
+
   const phrases: Phrase[] =
-    phrasesFromPlan.length > 0
-      ? phrasesFromPlan
-      : (PACKS[scene as keyof typeof PACKS]?.[lv] ?? PACKS.menu[lv]).slice(0, 8);
+    phrasesFromPlan.length > 0 ? phrasesFromPlan : (PACKS[scene][lv] ?? PACKS.menu[lv]).slice(0, 8);
 
-  // 再生
+  /* 再生 */
   const play = async (text: string, idx: number) => {
     try {
       setLoadingIndex(idx);
-      // メモリキャッシュ
       let url = cacheRef.current.get(text);
       if (!url) {
         const r = await fetch("/api/tts", {
@@ -563,7 +533,7 @@ function ListenAndRepeat({ plan, demand }: { plan: Plan; demand: Demand }) {
 
       <ul className="mt-3 space-y-3">
         {phrases.map((p, i) => (
-          <li key={i} className="text-sm leading-6">
+          <li key={`${p.en}-${i}`} className="text-sm leading-6">
             <div className="flex items-start gap-3">
               <div className="flex-1">
                 <div className="font-semibold">{p.en}</div>
@@ -584,13 +554,12 @@ function ListenAndRepeat({ plan, demand }: { plan: Plan; demand: Demand }) {
         ))}
       </ul>
 
-      {/* 一つだけ使い回すオーディオ */}
       <audio ref={audioRef} className="mt-3 w-full" />
     </div>
   );
 }
 
-/** ====== ③ ロールプレイ最小実装（質問→TTS再生） ====== */
+/* ===== ③ ロールプレイ最小実装（質問→TTS） ===== */
 function RoleplayBlock({ scene }: { scene: string }) {
   const { push } = useToast();
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -598,7 +567,6 @@ function RoleplayBlock({ scene }: { scene: string }) {
 
   const ask = async () => {
     try {
-      // 1) 質問を生成
       const r1 = await fetch("/api/roleplay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -609,7 +577,6 @@ function RoleplayBlock({ scene }: { scene: string }) {
 
       setQuestion(j1.question);
 
-      // 2) TTS
       const r2 = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -633,11 +600,7 @@ function RoleplayBlock({ scene }: { scene: string }) {
   return (
     <div className="mt-4 rounded-2xl border p-4">
       <div className="text-sm text-gray-600">AIが最初に質問します。聞いたあとに返答してください。</div>
-      <button
-        type="button"
-        onClick={ask}
-        className="mt-3 rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90"
-      >
+      <button type="button" onClick={ask} className="mt-3 rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90">
         🤖 最初の質問を聞く
       </button>
 
@@ -650,7 +613,7 @@ function RoleplayBlock({ scene }: { scene: string }) {
   );
 }
 
-/** ====== ④ フィードバック（簡易） ====== */
+/* ===== ④ フィードバック ===== */
 function FeedbackBlock({ plan, demand }: { plan: Plan; demand: Demand }) {
   return (
     <div className="mt-4 rounded-2xl border p-4">
