@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import { useToast } from "./components/Toast";
 import SessionRunner from "./components/SessionRunner";
 import Motivation, { type MotivateKind } from "./components/Motivation";
+import OnboardingGuide from "./components/OnboardingGuide";
 
 /** ---------- types ---------- */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -100,7 +101,6 @@ function toLesson(m: RawLesson): MicroLesson | null {
   if (t === "roleplay") return { type: "roleplay", scene: str((m as { scene?: unknown }).scene, "menu") };
   if (t === "listening") return { type: "listening", focus: str((m as { focus?: unknown }).focus, "") };
   if (t === "phrasepack") return { type: "phrasepack", title: str((m as { title?: unknown }).title, "") };
-  // fallback: 文字列化してフレーズ扱い
   const asText =
     str((m as { title?: unknown }).title) ||
     str((m as { label?: unknown }).label) ||
@@ -112,7 +112,6 @@ function toLesson(m: RawLesson): MicroLesson | null {
 /** unknown な API 返却を Plan に正規化 */
 function normalizePlan(raw: unknown, demand: Demand): Plan {
   const scene0 = demand.constraints.scenes?.[0] ?? "menu";
-
   const r = isObject(raw) ? raw : ({} as UnknownRecord);
 
   // todaySession
@@ -137,7 +136,7 @@ function normalizePlan(raw: unknown, demand: Demand): Plan {
       goal: str(rec.goal, `Week ${i + 1}`) || `Week ${i + 1}`,
       microLessons: lessons,
     };
-    });
+  });
 
   const kpis = arr<unknown>(r.kpis).map((x) => String(x)).filter(Boolean);
 
@@ -260,6 +259,21 @@ export default function Page() {
   const [preview, setPreview] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
   const [motivate, setMotivate] = useState<MotivateKind>("idle");
+
+  // 使い方ガイド
+  const GUIDE_KEY = "atoz_seen_guide_v1";
+  const [showGuide, setShowGuide] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!localStorage.getItem(GUIDE_KEY)) setShowGuide(true);
+  }, []);
+  const closeGuide = (persist: boolean) => {
+    if (persist && typeof window !== "undefined") {
+      localStorage.setItem(GUIDE_KEY, "1");
+    }
+    setShowGuide(false);
+  };
+
   const { push } = useToast();
 
   return (
@@ -273,8 +287,18 @@ export default function Page() {
               PingPong Method
             </span>
           </div>
-          <div className="hidden sm:block w-[360px]">
-            <Motivation variant={motivate} />
+
+          {/* 右側：励まし + 使い方ボタン */}
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:block w-[280px] sm:w-[360px]">
+              <Motivation variant={motivate} />
+            </div>
+            <button
+              onClick={() => setShowGuide(true)}
+              className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+            >
+              使い方
+            </button>
           </div>
         </div>
       </header>
@@ -370,6 +394,9 @@ export default function Page() {
           </div>
         )}
       </section>
+
+      {/* Onboarding Guide */}
+      <OnboardingGuide open={showGuide} onClose={closeGuide} />
 
       <footer className="sr-only">build: {process.env.NEXT_PUBLIC_BUILD_TAG}</footer>
     </div>
