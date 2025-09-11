@@ -1,11 +1,12 @@
 // app/components/SessionRunner.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { useToast } from "./Toast";
 import RoleplayWidget from "./RoleplayWidget";
+import type { MotivateKind } from "./Motivation";
 
-/* ===== types (page.tsx と揃える) ===== */
+/* ===== types ===== */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 type Step =
   | { step: "diagnostic_mini_test" }
@@ -40,7 +41,7 @@ type Demand = {
   prefs: { lang: "ja" | "en"; mode: "ai_only" | "ai_plus_coach" | "ai_plus_books" | "full_mix" };
 };
 
-/* ===== 小ユーティリティ ===== */
+/* ===== utils ===== */
 function labelStep(step: Step["step"]) {
   switch (step) {
     case "diagnostic_mini_test":
@@ -55,7 +56,6 @@ function labelStep(step: Step["step"]) {
 }
 
 function wordSim(a: string, b: string) {
-  // 超簡易：単語一致率（空白区切りで一致/合計）
   const A = a.toLowerCase().replace(/[^a-z\s]/g, "").split(/\s+/).filter(Boolean);
   const B = b.toLowerCase().replace(/[^a-z\s]/g, "").split(/\s+/).filter(Boolean);
   if (A.length === 0 || B.length === 0) return 0;
@@ -64,7 +64,7 @@ function wordSim(a: string, b: string) {
   return Math.round((hit / Math.max(A.length, B.length)) * 100);
 }
 
-/* ===== 1) 診断ミニテスト ===== */
+/* ===== 1) 診断 ===== */
 function DiagnosticMiniTest({
   level,
   onDecide,
@@ -79,7 +79,6 @@ function DiagnosticMiniTest({
   return (
     <div className="rounded-xl border p-4">
       <div className="text-sm text-gray-500">ゴール・レベル・シーンを簡易診断します。</div>
-
       <div className="mt-3">
         <label className="text-sm text-gray-600">主目的</label>
         <select
@@ -146,8 +145,10 @@ function DiagnosticMiniTest({
 /* ===== 2) 音読＆リピート ===== */
 function ListenAndRepeat({
   phrase,
+  onEncourage,
 }: {
   phrase: string;
+  onEncourage?: (kind: MotivateKind, score?: number) => void;
 }) {
   const { push } = useToast();
   const [recording, setRecording] = useState(false);
@@ -196,7 +197,13 @@ function ListenAndRepeat({
           if (!stt.ok) throw new Error(await stt.text());
           const { text } = (await stt.json()) as { text: string };
           setUserText(text);
-          setScore(wordSim(phrase, text));
+          const sc = wordSim(phrase, text);
+          setScore(sc);
+          if (onEncourage) {
+            if (sc >= 80) onEncourage("great", sc);
+            else if (sc >= 60) onEncourage("good", sc);
+            else onEncourage("oops", sc);
+          }
         } catch {
           push({ kind: "error", title: "文字起こし失敗", message: "もう一度お試しください。" });
         }
@@ -243,13 +250,15 @@ function ListenAndRepeat({
   );
 }
 
-/* ===== 3) AI ロールプレイ（AIが最初に質問） ===== */
+/* ===== 3) AIが最初に質問 ===== */
 function RoleplayAIFirst({
   scene,
   level,
+  onEncourage,
 }: {
   scene: string;
   level: CEFR;
+  onEncourage?: (kind: MotivateKind) => void;
 }) {
   const { push } = useToast();
   const [question, setQuestion] = useState<string>("");
@@ -264,6 +273,7 @@ function RoleplayAIFirst({
       if (!r.ok) throw new Error(await r.text());
       const data = (await r.json()) as { question: string };
       setQuestion(data.question);
+
       // 再生
       const tts = await fetch("/api/tts", {
         method: "POST",
@@ -275,6 +285,8 @@ function RoleplayAIFirst({
       const url = URL.createObjectURL(new Blob([buf], { type: "audio/mpeg" }));
       const a = new Audio(url);
       await a.play();
+
+      onEncourage?.("start");
     } catch {
       push({ kind: "error", title: "AIの質問取得に失敗", message: "ネットワークをご確認ください。" });
     }
@@ -294,7 +306,6 @@ function RoleplayAIFirst({
           <div className="mt-1 rounded border bg-white p-2">{question}</div>
         </div>
       )}
-      {/* 返答用：既存の音声ロールプレイ（STT→AI返信→TTS） */}
       <div className="mt-4">
         <RoleplayWidget scene={scene} level={level} />
       </div>
@@ -302,7 +313,7 @@ function RoleplayAIFirst({
   );
 }
 
-/* ===== 4) まとめ（フィードバック） ===== */
+/* ===== 4) まとめ ===== */
 function FeedbackBlock() {
   return (
     <div className="rounded-xl border p-4">
@@ -316,57 +327,38 @@ function FeedbackBlock() {
   );
 }
 
-/* ===== セッションランナー本体 ===== */
+/* ===== ランナー本体 ===== */
 export default function SessionRunner({
   plan,
   demand,
   setDemand,
+  onEncourage,
 }: {
   plan: Plan;
   demand: Demand;
   setDemand: React.Dispatch<React.SetStateAction<Demand>>;
+  onEncourage?: (kind: MotivateKind, score?: number) => void;
 }) {
-  const { push } = useToast();
   const steps = plan.todaySession.flow;
   const [active, setActive] = useState(0);
 
-  // シーン由来の練習フレーズ（簡易）
   const scene = demand.constraints.scenes[0] ?? "menu";
   const phraseMap: Record<string, string[]> = {
-    menu: [
-      "What would you like to drink?",
-      "Would you like to see our specials?",
-      "How would you like your steak cooked?",
-    ],
-    allergy: [
-      "Do you have any food allergies?",
-      "This dish contains peanuts.",
-      "We can make it without soy sauce.",
-    ],
-    payment: [
-      "How would you like to pay?",
-      "Could you tap your card here, please?",
-      "Would you like a receipt?",
-    ],
-    directions: [
-      "The restroom is down the hall to the right.",
-      "The station is a five-minute walk straight ahead.",
-      "Take the elevator to the third floor.",
-    ],
+    menu: ["What would you like to drink?", "Would you like to see our specials?", "How would you like your steak cooked?"],
+    allergy: ["Do you have any food allergies?", "This dish contains peanuts.", "We can make it without soy sauce."],
+    payment: ["How would you like to pay?", "Could you tap your card here, please?", "Would you like a receipt?"],
+    directions: ["The restroom is down the hall to the right.", "The station is a five-minute walk straight ahead.", "Take the elevator to the third floor."],
   };
   const phrases = phraseMap[scene] ?? phraseMap.menu;
   const [phraseIndex, setPhraseIndex] = useState(0);
 
   return (
     <div>
-      {/* ステップのカード群（クリックで切替） */}
       <ul className="mt-2 text-sm text-gray-700 space-y-3">
         {steps.map((s, i) => (
           <li
             key={i}
-            className={`cursor-pointer rounded-lg border p-3 ${
-              active === i ? "bg-gray-50 border-black" : ""
-            }`}
+            className={`cursor-pointer rounded-lg border p-3 ${active === i ? "bg-gray-50 border-black" : ""}`}
             onClick={() => setActive(i)}
           >
             {i + 1}. {labelStep(s.step)}
@@ -375,7 +367,6 @@ export default function SessionRunner({
       </ul>
 
       <div className="mt-4">
-        {/* 中身 */}
         {steps[active]?.step === "diagnostic_mini_test" && (
           <DiagnosticMiniTest
             level={demand.level.cefr}
@@ -385,25 +376,22 @@ export default function SessionRunner({
                 level: { ...d.level, cefr: out.level },
                 constraints: { ...d.constraints, scenes: out.scenes.length ? out.scenes : d.constraints.scenes },
               }));
-              push({ kind: "success", title: "診断を更新しました", message: `レベル: ${out.level}` });
+              onEncourage?.("start");
             }}
           />
         )}
 
         {steps[active]?.step === "listen_and_repeat" && (
           <div>
-            <ListenAndRepeat phrase={phrases[phraseIndex]} />
+            <ListenAndRepeat
+              phrase={phrases[phraseIndex]}
+              onEncourage={(k, sc) => onEncourage?.(k, sc)}
+            />
             <div className="mt-3 flex gap-2">
-              <button
-                className="rounded-lg border px-3 py-2 text-sm"
-                onClick={() => setPhraseIndex((i) => Math.max(0, i - 1))}
-              >
+              <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => setPhraseIndex((i) => Math.max(0, i - 1))}>
                 ◀ 前
               </button>
-              <button
-                className="rounded-lg border px-3 py-2 text-sm"
-                onClick={() => setPhraseIndex((i) => Math.min(phrases.length - 1, i + 1))}
-              >
+              <button className="rounded-lg border px-3 py-2 text-sm" onClick={() => setPhraseIndex((i) => Math.min(phrases.length - 1, i + 1))}>
                 次 ▶
               </button>
             </div>
@@ -411,7 +399,7 @@ export default function SessionRunner({
         )}
 
         {steps[active]?.step === "roleplay_ai" && (
-          <RoleplayAIFirst scene={scene} level={demand.level.cefr} />
+          <RoleplayAIFirst scene={scene} level={demand.level.cefr} onEncourage={(k) => onEncourage?.(k)} />
         )}
 
         {steps[active]?.step === "feedback" && <FeedbackBlock />}

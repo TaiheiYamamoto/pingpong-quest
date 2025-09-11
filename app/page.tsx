@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import { useToast } from "./components/Toast";
 import SessionRunner from "./components/SessionRunner";
+import Motivation, { type MotivateKind } from "./components/Motivation";
 
-/** ---------- domain types ---------- */
+/** ---------- types ---------- */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
 type Demand = {
@@ -31,11 +33,7 @@ type MicroLesson =
   | { type: "roleplay"; scene: string }
   | { type: "listening"; focus: string };
 
-type WeekItem = {
-  week: number;
-  goal: string;
-  microLessons: MicroLesson[];
-};
+type WeekItem = { week: number; goal: string; microLessons: MicroLesson[] };
 
 type Plan = {
   track: string;
@@ -71,7 +69,75 @@ async function fetchCurriculum(demand: Demand): Promise<Plan> {
   return JSON.parse(text) as Plan;
 }
 
-/** ---------- demand form (簡易) ---------- */
+/** ---------- normalize (中身が空でも崩れないよう補正) ---------- */
+function normalizePlan(raw: any, demand: Demand): Plan {
+  const scene0 = demand.constraints.scenes?.[0] ?? "menu";
+
+  // todaySession.flow を Step[] に正規化
+  const rawFlow: any[] = raw?.todaySession?.flow ?? [];
+  const mapOne = (x: any): Step | null => {
+    if (!x) return null;
+    // 文字列でも、type/labelでも受ける
+    const s = (typeof x === "string" ? x : x.step || x.type || x.label || "").toString();
+    const jp = s.replace(/\s/g, "");
+    if (/diagnostic|診断/i.test(s)) return { step: "diagnostic_mini_test" };
+    if (/listen|repeat|音読|リピート/i.test(s)) return { step: "listen_and_repeat" };
+    if (/roleplay|ロールプレイ/i.test(s)) return { step: "roleplay_ai", scene: x.scene || scene0 };
+    if (/feedback|振り返り|フィードバック/i.test(s)) return { step: "feedback" };
+    // よく分からない場合はスキップ
+    return null;
+  };
+  const flow: Step[] = rawFlow.map(mapOne).filter(Boolean) as Step[];
+  const DEFAULT_FLOW: Step[] = [
+    { step: "diagnostic_mini_test" },
+    { step: "listen_and_repeat" },
+    { step: "roleplay_ai", scene: scene0 },
+    { step: "feedback" },
+  ];
+
+  // weekly microLessons をきれいに
+  const weeklySrc: any[] = Array.isArray(raw?.weekly) ? raw.weekly : [];
+  const weekly: WeekItem[] = weeklySrc
+    .slice(0, 8) // 8週まで
+    .map((w, i) => {
+      const lessonsRaw: any[] = Array.isArray(w?.microLessons) ? w.microLessons : [];
+      const lessons: MicroLesson[] = lessonsRaw
+        .map((m) => {
+          if (!m) return null;
+          if (typeof m === "string") {
+            const s = m.trim();
+            if (!s) return null;
+            if (/roleplay|ロールプレイ/i.test(s)) return { type: "roleplay", scene: "menu" } as MicroLesson;
+            if (/listen|リスニング/i.test(s)) return { type: "listening", focus: s } as MicroLesson;
+            return { type: "phrasepack", title: s } as MicroLesson;
+          }
+          if (m.type === "roleplay" && !m.scene) return { ...m, scene: "menu" };
+          return m as MicroLesson;
+        })
+        .filter(Boolean) as MicroLesson[];
+
+      return {
+        week: Number(w?.week ?? i + 1),
+        goal: String(w?.goal || "").trim() || `Week ${i + 1}`,
+        microLessons: lessons,
+      };
+    });
+
+  return {
+    track: String(raw?.track || "飲食業向け英会話"),
+    weekly,
+    todaySession: {
+      durationMin: Number(raw?.todaySession?.durationMin ?? 20),
+      flow: flow.length ? flow : DEFAULT_FLOW,
+    },
+    kpis:
+      Array.isArray(raw?.kpis) && raw.kpis.length
+        ? raw.kpis.map((x: any) => String(x))
+        : ["weekly_completion_rate", "WPM", "mispronunciation_rate", "dialog_success_rate"],
+  };
+}
+
+/** ---------- 簡易ニーズフォーム ---------- */
 function DemandForm({
   demand,
   setDemand,
@@ -168,69 +234,67 @@ function DemandForm({
   );
 }
 
-/** ---------- page ---------- */
+/** ---------- ページ ---------- */
 export default function Page() {
   const [demand, setDemand] = useState<Demand>({
-    profile: {
-      ageRange: "30s",
-      gender: "male",
-      role: "restaurant_staff",
-      industry: "food_service",
-      useCase: "inbound_service",
-    },
-    level: {
-      selfReport: "英検3級 / 中学英語程度",
-      cefr: "A2",
-      knownIssues: ["listening", "speaking_fluency"],
-    },
+    profile: { ageRange: "30s", gender: "male", role: "restaurant_staff", industry: "food_service", useCase: "inbound_service" },
+    level: { selfReport: "英検3級 / 中学英語程度", cefr: "A2", knownIssues: ["listening", "speaking_fluency"] },
     constraints: { minutesPerDay: 20, deadlineWeeks: 8, scenes: ["menu", "allergy", "payment", "directions"] },
     prefs: { lang: "ja", mode: "full_mix" },
   });
 
   const [preview, setPreview] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(false);
+  const [motivate, setMotivate] = useState<MotivateKind>("idle");
   const { push } = useToast();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-50 via-white to-white">
       {/* header */}
-      <header className="sticky top-0 z-30 backdrop-blur bg-white/70 border-b">
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-xl bg-black text-white flex items-center justify-center font-bold">A</div>
+            <Image src="/pingpong.svg" alt="PingPong" width={32} height={32} priority />
             <div className="font-semibold">AtoZ English</div>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">PingPong Method</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-white">
+              PingPong Method
+            </span>
+          </div>
+          <div className="hidden sm:block w-[360px]">
+            <Motivation variant={motivate} />
           </div>
         </div>
       </header>
 
       {/* hero */}
       <section className="max-w-6xl mx-auto px-4 pt-10 pb-6">
-        <h1 className="text-3xl font-bold leading-tight">最速で“使える英語”を。</h1>
-        <p className="mt-4 text-gray-700">
-          ベストセラー著者デイビッド・セイン率いるAtoZ English。日本語堪能な英語ネイティブ、翻訳・教育のスペシャリストが+αのサポート。
+        <h1 className="text-3xl font-extrabold leading-tight bg-gradient-to-r from-fuchsia-600 to-sky-600 bg-clip-text text-transparent">
+          最速で“使える英語”を。
+        </h1>
+        <p className="mt-3 text-gray-700">
+          ベストセラー著者デイビッド・セイン率いる AtoZ English。日本語堪能な英語ネイティブ、翻訳・教育のスペシャリストが +α のサポート。
         </p>
 
         <button
           onClick={async () => {
             try {
+              setMotivate("start");
               push({ kind: "info", title: "生成を開始しました", message: "少しお待ちください…" });
               setLoading(true);
-              const plan = await fetchCurriculum(demand);
+              const raw = await fetchCurriculum(demand);
+              const plan = normalizePlan(raw, demand);
               setPreview(plan);
-              push({ kind: "success", title: "プランを生成しました", message: "プレビュー欄をご確認ください。" });
+              push({ kind: "success", title: "プランを生成しました", message: "本日のセッションから始めましょう！" });
+              setMotivate("good");
             } catch (e) {
               console.error(e);
-              push({
-                kind: "error",
-                title: "生成に失敗しました",
-                message: "APIキーやネットワークをご確認ください。",
-              });
+              push({ kind: "error", title: "生成に失敗しました", message: "APIキーやネットワークをご確認ください。" });
+              setMotivate("oops");
             } finally {
               setLoading(false);
             }
           }}
-          className="mt-6 px-4 py-2 rounded-xl bg-black text-white text-sm"
+          className="mt-6 px-5 py-2 rounded-xl text-sm text-white bg-gradient-to-r from-indigo-600 to-sky-600 shadow hover:opacity-90"
         >
           {loading ? "生成中..." : "プランを自動生成（プレビュー）"}
         </button>
@@ -239,46 +303,62 @@ export default function Page() {
       {/* demand form */}
       <DemandForm demand={demand} setDemand={setDemand} />
 
-      {/* preview + 本日のセッション（中身つき） */}
+      {/* main area：右（本日のセッション）を主役、左（カリキュラム）はサブ */}
       <section id="preview" className="max-w-6xl mx-auto px-4 pb-16">
         {preview ? (
-          <div className="grid lg:grid-cols-3 gap-6">
-            {/* 左：プレビュー */}
-            <div className="lg:col-span-2 rounded-2xl border bg-white p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 右（主役） */}
+            <div className="order-1 lg:order-2 lg:col-span-2 rounded-2xl border bg-white p-6">
+              <div className="text-xl font-semibold">本日のセッション</div>
+              <p className="text-sm text-gray-500 mt-1">
+                合計 {preview.todaySession.durationMin} 分想定。クリックでステップを切り替えられます。
+              </p>
+
+              <div className="mt-4">
+                <SessionRunner
+                  plan={preview}
+                  demand={demand}
+                  setDemand={setDemand}
+                  onEncourage={(k) => setMotivate(k)}
+                />
+              </div>
+
+              <div className="mt-6 text-xs text-gray-500">
+                KPI: {preview.kpis.join(", ")}
+              </div>
+            </div>
+
+            {/* 左（サブ） */}
+            <div className="order-2 lg:order-1 lg:col-span-1 rounded-2xl border bg-white p-6">
               <div className="text-sm text-gray-500">カリキュラムプレビュー</div>
               <h3 className="text-lg font-semibold mt-1">{preview.track}</h3>
 
-              <ul className="mt-2 text-sm text-gray-700 list-disc list-inside">
+              <ul className="mt-2 text-sm text-gray-700 list-disc list-inside space-y-4">
                 {preview.weekly.map((w: WeekItem) => (
                   <li key={w.week}>
-                    Week {w.week}: {w.goal}
-                    {w.microLessons.length > 0 && (
+                    <div className="font-medium">Week {w.week}: {w.goal}</div>
+                    {w.microLessons && w.microLessons.length > 0 ? (
                       <ul className="ml-5 list-disc">
-                        {w.microLessons.map((m: MicroLesson, i: number) => (
-                          <li key={`${w.week}-${i}`}>
-                            {m.type === "roleplay"
-                              ? `ロールプレイ：${m.scene}`
-                              : m.type === "phrasepack"
-                              ? `フレーズ：${m.title}`
-                              : m.type === "listening"
-                              ? `リスニング：${m.focus}`
-                              : ""}
-                          </li>
-                        ))}
+                        {w.microLessons
+                          .filter(Boolean)
+                          .map((m: MicroLesson, i: number) => (
+                            <li key={`${w.week}-${i}`}>
+                              {m.type === "roleplay"
+                                ? `ロールプレイ：${m.scene}`
+                                : m.type === "phrasepack"
+                                ? `フレーズ：${m.title}`
+                                : m.type === "listening"
+                                ? `リスニング：${m.focus}`
+                                : ""}
+                            </li>
+                          ))}
                       </ul>
+                    ) : (
+                      <div className="ml-5 text-gray-400 text-xs">（今週の詳細は自動生成中）</div>
                     )}
                   </li>
                 ))}
               </ul>
-            </div>
-
-            {/* 右：本日のセッション（実行UI） */}
-            <div className="rounded-2xl border bg-white p-6">
-              <div className="text-lg font-semibold">本日のセッション</div>
-              {/* もともとの一覧は SessionRunner 内でクリック切替に対応 */}
-              <SessionRunner plan={preview} demand={demand} setDemand={setDemand} />
-
-              <div className="mt-4 text-xs text-gray-500">KPI: {preview.kpis.join(", ")}</div>
             </div>
           </div>
         ) : (
@@ -288,7 +368,7 @@ export default function Page() {
         )}
       </section>
 
-      {/* 任意：ビルドタグ（ENVでキャッシュ更新する運用用。表示は隠します） */}
+      {/* build tag（キャッシュ更新用） */}
       <footer className="sr-only">build: {process.env.NEXT_PUBLIC_BUILD_TAG}</footer>
     </div>
   );
