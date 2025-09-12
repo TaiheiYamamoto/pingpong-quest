@@ -86,11 +86,11 @@ export default function Page() {
       case "food_service":
         return "レストラン（飲食）";
       case "hotel":
-        return "ホテル（旅行・交通）";
+        return "ホテル（旅行）";
       case "retail":
         return "商店（小売）";
       case "transport":
-        return "交通";
+        return "移動・交通";
       default:
         return "おもてなし（観光ガイド）";
     }
@@ -126,9 +126,9 @@ export default function Page() {
         <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
           最速で
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500">
-            “使える英語”
+            “使えるおもてなし英語”
           </span>
-          を。
+          をトレーニング
         </h1>
         <p className="mt-4 text-gray-700 text-lg">
           ①フレーズ → ②AIロールプレイ → ③復習。ジャンルとレベルに合わせて、毎回すぐ実戦投入できる形で身につきます。
@@ -149,7 +149,7 @@ export default function Page() {
       {/* ニーズ入力 */}
       <section className="max-w-6xl mx-auto px-4 pb-6">
         <div className="rounded-3xl border bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">身につけたい英語のジャンル</h2>
+          <h2 className="text-lg font-semibold">身につけたいおもてなし英語のジャンル</h2>
 
           {/* ジャンル */}
           <div className="mt-4">
@@ -165,9 +165,9 @@ export default function Page() {
               }
             >
               <option value="food_service">レストラン（飲食）</option>
-              <option value="hotel">ホテル（旅行・交通）</option>
+              <option value="hotel">ホテル（旅行）</option>
               <option value="retail">商店（小売）</option>
-              <option value="transport">交通</option>
+              <option value="transport">移動・交通</option>
               <option value="other">おもてなし（観光ガイド）</option>
             </select>
           </div>
