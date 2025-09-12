@@ -181,22 +181,23 @@ function ListenAndRepeat({
   level,
   phrases,
   loading,
-  onPhrasePlayed,
 }: {
   genre: Genre;
   level: CEFR;
   phrases: Phrase[];
   loading: boolean;
-  onPhrasePlayed?: (index: number) => void;
 }) {
+  // ✅ Hook はコンポーネント直下で 1 度だけ
   const { push } = useToast();
+
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [loadingIndex, setLoadingIndex] = React.useState<number | null>(null);
   const cacheRef = React.useRef<Map<string, string>>(new Map());
 
-  const play = async (text: string, idx: number) => {
+  async function play(text: string, idx: number) {
     try {
       setLoadingIndex(idx);
+
       let url = cacheRef.current.get(text);
       if (!url) {
         const r = await fetch("/api/tts", {
@@ -209,19 +210,20 @@ function ListenAndRepeat({
         url = URL.createObjectURL(b);
         cacheRef.current.set(text, url);
       }
+
       const a = audioRef.current;
       if (a) {
         a.src = url;
         await a.play().catch(() => void 0);
       }
-      onPhrasePlayed?.(idx); // 成功時だけ通知
     } catch (e) {
       const msg = e instanceof Error ? e.message : "エラーが発生しました";
-      useToast().push({ kind: "error", title: "再生できません", message: msg });
+      // ✅ push を必ず使用
+      push({ kind: "error", title: "再生できません", message: msg });
     } finally {
       setLoadingIndex(null);
     }
-  };
+  }
 
   return (
     <div className="rounded-2xl border p-4">
@@ -263,7 +265,7 @@ function ListenAndRepeat({
       )}
     </div>
   );
-}
+}  
 
 /* ========= ② ロールプレイ（録音→STT→AI返答→TTS、2〜3往復） ========= */
 

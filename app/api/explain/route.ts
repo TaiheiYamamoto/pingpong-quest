@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
   try {
     const { phrases, level } = (await req.json()) as Partial<ExplainReq>;
 
-    // 入力バリデーション
     if (!Array.isArray(phrases) || phrases.length === 0 || !level) {
       return new Response(JSON.stringify({ error: "bad request" }), {
         status: 400,
@@ -68,7 +67,8 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ points }), {
       headers: { "Content-Type": "application/json" },
     });
-  } catch (_err) {
+  } catch (err) {
+    console.error("explain route error:", err);
     return new Response(JSON.stringify({ error: "failed" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
