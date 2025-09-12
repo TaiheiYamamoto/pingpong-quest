@@ -290,7 +290,7 @@ function RoleplayBlock({
   const [recorder, setRecorder] = React.useState<MediaRecorder | null>(null);
   const [ideal, setIdeal] = React.useState<string | undefined>(undefined);
   const [showIdeal, setShowIdeal] = React.useState<boolean>(false);
-  const [round, setRound] = React.useState<number>(0); // 最大3ターン
+  const [, setRound] = React.useState<number>(0); // 最大3ターン
   const MAX_ROUNDS = 3;
 
   // AIの最初の質問
@@ -349,18 +349,19 @@ function RoleplayBlock({
           const form = new FormData();
           form.append("file", blob, "user.webm");
           const stt = await fetch("/api/stt", { method: "POST", body: form });
-          const j = (await stt.json()) as { text?: string; error?: string };
-          if (!stt.ok || !j.text) throw new Error(j.error || "音声を認識できませんでした");
+const j = (await stt.json()) as { text: string; error?: string }; // ← text を必須に
+if (!stt.ok || !j.text) throw new Error(j.error || "音声を認識できませんでした");
 
           // 会話にユーザーを追加
-          setTurns((t) => [...t, { who: "user", text: j.text }]);
+          const userText = j.text;
+setTurns((t) => [...t, { who: "user", text: userText }]);
 
           // AIの返答を取得
           const r = await fetch("/api/roleplay/reply", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ scene, level, user: j.text, contextId }),
-          });
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ scene, level, user: userText, contextId }),
+});
           const jr = (await r.json()) as ReplyResp | { error?: string };
           if (!r.ok || !("ai" in jr)) throw new Error(("error" in jr && jr.error) || "返答の生成に失敗しました");
 
