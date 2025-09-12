@@ -28,9 +28,7 @@ export default function Page() {
     prefs: { lang: "ja", mode: "full_mix" },
   });
 
-  const [started, setStarted] = useState(false);
-
-  /** ====== KPI ====== */
+  /** KPI（右カラム） */
   const [kpi, setKpi] = useState<KpiState>({
     phrasesDone: 0,
     phrasesGoal: 10,
@@ -38,27 +36,41 @@ export default function Page() {
     stepsDone: 0,
     stepsGoal: 3,
   });
-  const sessionClear =
-    kpi.phrasesDone >= kpi.phrasesGoal && kpi.roleplayCompleted && kpi.stepsDone >= kpi.stepsGoal;
 
-  /** ====== 経過時間 ====== */
+  /** セッション開始フラグ & 計測 */
+  const [started, setStarted] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [elapsed, setElapsed] = useState<string>("00:00");
+  const [elapsed, setElapsed] = useState<number>(0); // 秒
+
+  // 経過時間
   useEffect(() => {
     if (!startedAt) return;
-    const id = setInterval(() => {
-      const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-      const mm = String(Math.floor(sec / 60)).padStart(2, "0");
-      const ss = String(sec % 60).padStart(2, "0");
-      setElapsed(`${mm}:${ss}`);
-    }, 1000);
+    const id = setInterval(() => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000))), 1000);
     return () => clearInterval(id);
   }, [startedAt]);
 
-  /** ====== 生成（セッション開始） ====== */
+  /** 完了の判定とお祝い表示 */
+  const sessionClear =
+    kpi.phrasesDone >= kpi.phrasesGoal &&
+    kpi.roleplayCompleted &&
+    kpi.stepsDone >= kpi.stepsGoal;
+
+  const [showCeleb, setShowCeleb] = useState(false);
+  useEffect(() => {
+    if (sessionClear) {
+      setShowCeleb(true);
+      const t = setTimeout(() => setShowCeleb(false), 2000); // 2秒で自然消滅
+      return () => clearTimeout(t);
+    }
+  }, [sessionClear]);
+
+  /** 生成（セッション開始） */
   const startSession = () => {
     setStarted(true);
     setStartedAt(Date.now());
+    setElapsed(0);
+    // KPIを今回分にリセット
+    setKpi({ phrasesDone: 0, phrasesGoal: 10, roleplayCompleted: false, stepsDone: 0, stepsGoal: 3 });
     push({
       kind: "success",
       title: "キックオフ成功！",
@@ -66,7 +78,7 @@ export default function Page() {
     });
   };
 
-  /** ====== コーチのひとこと（励ましメッセージ） ====== */
+  /** コーチのひとこと */
   const coachTips = useMemo(() => {
     const genreLabel: Record<Demand["profile"]["industry"], string> = {
       food_service: "レストラン",
@@ -81,32 +93,26 @@ export default function Page() {
       `今日は ${g} × ${lv} にフォーカス。短く・はっきり・笑顔で！`,
       "英語は“伝わったら勝ち”。完璧を目指すより回数をこなそう。",
       "聞き返されたらチャンス！言い換え1パターンを用意しておくと安心。",
-      "音読は“耳＞口＞目”の順で定着。声に出す回数で差がつきます。",
+      "音読は“耳＞口＞目”。声に出す回数で差がつきます。",
       "ロールプレイでは、返答＋ひとこと気遣いが好印象！",
     ];
   }, [demand.profile.industry, demand.level.cefr]);
 
-  /** ====== ヘッダーバッジ用のジャンル表示 ====== */
+  /** ヘッダーバッジ用のジャンル表示 */
   const genreText = useMemo(() => {
     switch (demand.profile.industry) {
-      case "food_service":
-        return "レストラン（飲食）";
-      case "hotel":
-        return "ホテル（旅行）";
-      case "retail":
-        return "商店（小売）";
-      case "transport":
-        return "移動・交通";
-      default:
-        return "おもてなし（観光ガイド）";
+      case "food_service": return "レストラン（飲食）";
+      case "hotel": return "ホテル（旅行）";
+      case "retail": return "商店（小売）";
+      case "transport": return "移動・交通";
+      default: return "おもてなし（観光ガイド）";
     }
   }, [demand.profile.industry]);
 
   return (
     <div className="min-h-screen bg-white relative overflow-x-clip">
-      {/* 背景ぼかし */}
-      <div className="pointer-events-none absolute -top-24 -left-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-fuchsia-300 via-pink-300 to-amber-200 blur-3xl opacity-40"></div>
-      <div className="pointer-events-none absolute -bottom-24 -right-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-sky-300 via-teal-200 to-lime-200 blur-3xl opacity-40"></div>
+      {/* お祝い（自動で2秒後に消える＆画面はブロックしない） */}
+      <Celebration show={showCeleb} />
 
       {/* header */}
       <header className="sticky top-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/80 border-b">
@@ -123,37 +129,21 @@ export default function Page() {
           <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
             <span className="px-2 py-0.5 rounded-full bg-gray-100">ジャンル: {genreText}</span>
             <span className="px-2 py-0.5 rounded-full bg-gray-100">CEFR: {demand.level.cefr}</span>
-            {startedAt && <span className="px-2 py-0.5 rounded-full bg-gray-100">経過: {elapsed}</span>}
+            {startedAt && <span className="px-2 py-0.5 rounded-full bg-gray-100">経過: {Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,"0")}</span>}
           </div>
         </div>
       </header>
 
       {/* hero */}
       <section className="max-w-6xl mx-auto px-4 pt-10 pb-6">
-        <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
-          最速で
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500">
-            “使えるおもてなし英語”
-          </span>
-          をトレーニング
-        </h1>
-        <p className="mt-4 text-gray-700 text-lg">
-          ①フレーズ → ②AIロールプレイ → ③復習。ジャンルとレベルに合わせて、毎回すぐ実戦投入できる形で身につきます。
-        </p>
-
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <button
-            onClick={startSession}
-            className="px-5 py-3 rounded-2xl text-white text-sm font-semibold shadow transition
-                           bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 hover:opacity-90"
-          >
-            {started ? "本日のセッションを再開" : "本日のセッションを開始"}
-          </button>
-          <span className="text-xs text-gray-500">約 {demand.constraints.minutesPerDay} 分 / 日</span>
-        </div>
+        <h1 className="text-3xl font-bold leading-tight">最速で“使えるおもてなし英語”をトレーニング</h1>
+        <p className="mt-4 text-gray-700">①フレーズ → ②AIロールプレイ → ③復習。ジャンルとレベルに合わせて毎回すぐ実戦投入。</p>
+        <button onClick={startSession} className="mt-6 px-4 py-2 rounded-xl bg-black text-white text-sm">
+          {started ? "本日のセッションを再開" : "本日のセッションを開始"}
+        </button>
       </section>
 
-      {/* ニーズ入力 */}
+      {/* ニーズ入力（省略…既存そのまま） */}
       <section className="max-w-6xl mx-auto px-4 pb-6">
         <div className="rounded-3xl border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold">身につけたいおもてなし英語のジャンル</h2>
@@ -165,10 +155,7 @@ export default function Page() {
               className="mt-1 w-full rounded-xl border px-3 py-2"
               value={demand.profile.industry}
               onChange={(e) =>
-                setDemand((d) => ({
-                  ...d,
-                  profile: { ...d.profile, industry: e.target.value as Demand["profile"]["industry"] },
-                }))
+                setDemand((d) => ({ ...d, profile: { ...d.profile, industry: e.target.value as Demand["profile"]["industry"] } }))
               }
             >
               <option value="food_service">レストラン（飲食）</option>
@@ -179,41 +166,31 @@ export default function Page() {
             </select>
           </div>
 
-          {/* レベル（自己申告） */}
+          {/* レベル */}
           <div className="mt-4">
             <label className="text-sm text-gray-600">自己申告レベル（CEFR）</label>
             <select
               className="mt-1 w-full rounded-xl border px-3 py-2"
               value={demand.level.cefr}
-              onChange={(e) =>
-                setDemand((d) => ({ ...d, level: { ...d.level, cefr: e.target.value as Demand["level"]["cefr"] } }))
-              }
+              onChange={(e) => setDemand((d) => ({ ...d, level: { ...d.level, cefr: e.target.value as Demand["level"]["cefr"] } }))}
             >
-              {(["A1", "A2", "B1", "B2", "C1", "C2"] as const).map((lv) => (
-                <option key={lv} value={lv}>
-                  {lv}
-                </option>
+              {(["A1","A2","B1","B2","C1","C2"] as const).map((lv) => (
+                <option key={lv} value={lv}>{lv}</option>
               ))}
             </select>
           </div>
 
-          {/* 1日学習時間（任意） */}
+          {/* 1日学習時間 */}
           <div className="mt-4">
             <label className="text-sm text-gray-600">1日の学習時間（分）</label>
             <input
-              type="number"
-              min={5}
-              max={60}
-              step={1}
+              type="number" min={5} max={60} step={1}
               className="mt-1 w-full rounded-xl border px-3 py-2"
               value={demand.constraints.minutesPerDay}
               onChange={(e) =>
                 setDemand((d) => ({
                   ...d,
-                  constraints: {
-                    ...d.constraints,
-                    minutesPerDay: Math.max(5, Math.min(60, Number(e.target.value))),
-                  },
+                  constraints: { ...d.constraints, minutesPerDay: Math.max(5, Math.min(60, Number(e.target.value))) },
                 }))
               }
             />
@@ -227,19 +204,22 @@ export default function Page() {
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-3xl border bg-white p-6 shadow-lg ring-1 ring-black/5">
             <div className="text-sm text-gray-500">本日のセッション</div>
+
             {started ? (
               <div className="mt-2">
                 <SessionRunner
                   demand={demand}
                   onStart={() => {
-                    setKpi((k) => ({ ...k, stepsDone: 0, roleplayCompleted: false, phrasesDone: 0 }));
+                    setKpi({ phrasesDone: 0, phrasesGoal: 10, roleplayCompleted: false, stepsDone: 0, stepsGoal: 3 });
                     setStartedAt(Date.now());
+                    setElapsed(0);
                   }}
                   onStepDone={() => setKpi((k) => ({ ...k, stepsDone: Math.min(k.stepsGoal, k.stepsDone + 1) }))}
-                  onPhrasePlayed={() =>
-                    setKpi((k) => ({ ...k, phrasesDone: Math.min(k.phrasesGoal, k.phrasesDone + 1) }))
-                  }
+                  onPhrasePlayed={() => setKpi((k) => ({ ...k, phrasesDone: Math.min(k.phrasesGoal, k.phrasesDone + 1) }))}
                   onRoleplayCompleted={() => setKpi((k) => ({ ...k, roleplayCompleted: true }))}
+                  onAllDone={() => {
+                    // 最終完了（KPIはすでに更新済み）→ Celebration は sessionClear で自動表示
+                  }}
                 />
               </div>
             ) : (
@@ -249,26 +229,11 @@ export default function Page() {
             )}
           </div>
 
-          {/* 右カラム：進捗 + 目標 + コーチ */}
+          {/* 右カラム：KPI & コーチのひとこと */}
           <div className="space-y-6">
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <KpiPanel kpi={kpi} />
-              {startedAt && (
-                <div className="mt-3 text-xs text-gray-500">
-                  経過時間: <span className="font-mono">{elapsed}</span>
-                </div>
-              )}
             </div>
-
-            <div className="rounded-3xl border bg-white p-6 shadow-sm">
-              <div className="text-sm text-gray-500">今日の目標</div>
-              <ul className="mt-2 text-sm text-gray-800 space-y-2">
-                <li className="rounded-xl border p-3">フレーズ 10本を音読（各 3 回）</li>
-                <li className="rounded-xl border p-3">ロールプレイで 1 往復 × 3 セット</li>
-                <li className="rounded-xl border p-3">重要表現の復習で言い換え 2 パターン</li>
-              </ul>
-            </div>
-
             <div className="rounded-3xl border bg-gradient-to-r from-emerald-50 to-teal-50 p-6 shadow-sm">
               <div className="text-sm text-emerald-700 font-semibold">コーチのひとこと</div>
               <p className="mt-2 text-sm text-emerald-900">{coachTips[0]}</p>
@@ -277,9 +242,6 @@ export default function Page() {
           </div>
         </div>
       </section>
-
-      {/* 達成演出 */}
-      <Celebration show={sessionClear} />
 
       <footer className="sr-only">build: {process.env.NEXT_PUBLIC_BUILD_TAG}</footer>
     </div>
