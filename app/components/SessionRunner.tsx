@@ -5,7 +5,7 @@ import React from "react";
 import { useToast } from "./Toast";
 
 /* ========= 型 ========= */
-type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+export type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
 export type Demand = {
   profile: {
@@ -27,7 +27,6 @@ type PhrasesResp = { phrases: Phrase[] };
 
 type StartResp = { question: string; ideal?: string; contextId?: string };
 type ReplyResp = { ai: string; ideal?: string; done?: boolean; contextId?: string };
-
 type Turn = { who: "ai" | "user"; text: string; audioUrl?: string };
 
 /* ========= ユーティリティ ========= */
@@ -87,7 +86,7 @@ export default function SessionRunner({
     ? demand.level.cefr
     : "A2";
 
-  // フレーズはここで一回だけ取得
+  // フレーズ取得
   const { push } = useToast();
   const [phrases, setPhrases] = React.useState<Phrase[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
@@ -155,6 +154,7 @@ export default function SessionRunner({
             genre={genre}
             level={level}
             onRoleplayCompleted={onRoleplayCompleted}
+            onStepDone={onStepDone}
           />
         )}
 
@@ -165,7 +165,12 @@ export default function SessionRunner({
           <button
             type="button"
             onClick={() => {
-              const id = steps[current] === "listen_and_repeat" ? "phrases" : steps[current] === "roleplay_ai" ? "roleplay" : "review";
+              const id =
+                steps[current] === "listen_and_repeat"
+                  ? "phrases"
+                  : steps[current] === "roleplay_ai"
+                  ? "roleplay"
+                  : "review";
               onStepDone?.(id);
               setCurrent((c) => Math.min(c + 1, steps.length - 1));
             }}
@@ -274,10 +279,12 @@ function RoleplayBlock({
   genre,
   level,
   onRoleplayCompleted,
+  onStepDone,
 }: {
   genre: Genre;
   level: CEFR;
   onRoleplayCompleted?: (payload?: { score?: number }) => void;
+  onStepDone?: (id: "phrases" | "roleplay" | "review") => void;
 }) {
   const { push } = useToast();
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -290,7 +297,7 @@ function RoleplayBlock({
   const [recorder, setRecorder] = React.useState<MediaRecorder | null>(null);
   const [ideal, setIdeal] = React.useState<string | undefined>(undefined);
   const [showIdeal, setShowIdeal] = React.useState<boolean>(false);
-  const [, setRound] = React.useState<number>(0); // 最大3ターン
+  const setRound = React.useState<number>(0)[1]; // ← 使わない値は受け取らない（ESLint対策）
   const MAX_ROUNDS = 3;
 
   // AIの最初の質問
@@ -306,7 +313,6 @@ function RoleplayBlock({
       setTurns([{ who: "ai", text: j.question }]);
       setIdeal(j.ideal);
       setContextId(j.contextId);
-      // 読み上げ
       await speak(j.question);
       push({ kind: "success", title: "AIが最初の質問をしました", message: "録音して返答してみましょう。" });
     } catch (e) {
@@ -332,49 +338,59 @@ function RoleplayBlock({
     }
   }
 
-  // 録音開始/停止
+  // 録音開始/停止（Safari 対策含む）
   const toggleRec = async () => {
     if (!recording) {
-      // start
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
+
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")
+        ? "audio/mp4;codecs=mp4a.40.2"
+        : undefined;
+
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       const chunks: Blob[] = [];
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.push(e.data);
       };
       rec.onstop = async () => {
-        const blob = new Blob(chunks, { type: "audio/webm" });
-        // STT
+        const isMp4 = !!mime && mime.includes("mp4");
+        const blob = new Blob(chunks, { type: isMp4 ? "audio/mp4" : "audio/webm" });
+        const ext = isMp4 ? "m4a" : "webm";
+
         try {
+          // STT
           const form = new FormData();
-          form.append("file", blob, "user.webm");
+          form.append("file", blob, `user.${ext}`);
           const stt = await fetch("/api/stt", { method: "POST", body: form });
-const j = (await stt.json()) as { text: string; error?: string }; // ← text を必須に
-if (!stt.ok || !j.text) throw new Error(j.error || "音声を認識できませんでした");
+          const j = (await stt.json()) as { text: string; error?: string };
+          if (!stt.ok || !j.text) throw new Error(j.error || "音声を認識できませんでした");
 
-          // 会話にユーザーを追加
+          // 会話にユーザー発話を追加
           const userText = j.text;
-setTurns((t) => [...t, { who: "user", text: userText }]);
+          setTurns((t) => [...t, { who: "user", text: userText }]);
 
-          // AIの返答を取得
+          // AIの返答
           const r = await fetch("/api/roleplay/reply", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ scene, level, user: userText, contextId }),
-});
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scene, level, user: userText, contextId }),
+          });
           const jr = (await r.json()) as ReplyResp | { error?: string };
           if (!r.ok || !("ai" in jr)) throw new Error(("error" in jr && jr.error) || "返答の生成に失敗しました");
 
           setIdeal((prev) => jr.ideal ?? prev);
           setContextId(jr.contextId ?? contextId);
-          setTurns((t) => [...t, { who: "ai", text: jr.ai }]);
-          await speak(jr.ai);
+          setTurns((t) => [...t, { who: "ai", text: (jr as ReplyResp).ai }]);
+          await speak((jr as ReplyResp).ai);
 
           // ラウンドを進める
           setRound((n) => {
             const next = Math.min(n + 1, MAX_ROUNDS);
-            if (next >= MAX_ROUNDS || jr.done) {
+            if (next >= MAX_ROUNDS || (jr as ReplyResp).done) {
               onRoleplayCompleted?.({});
+              onStepDone?.("roleplay"); // KPI側で二重加算しない実装なら有効
             }
             return next;
           });
@@ -383,11 +399,11 @@ setTurns((t) => [...t, { who: "user", text: userText }]);
           push({ kind: "error", title: "処理に失敗しました", message: msg });
         }
       };
+
       rec.start();
       setRecorder(rec);
       setRecording(true);
     } else {
-      // stop
       recorder?.stop();
       recorder?.stream.getTracks().forEach((t) => t.stop());
       setRecorder(null);
@@ -402,7 +418,8 @@ setTurns((t) => [...t, { who: "user", text: userText }]);
       return;
     }
     try {
-      const lastAi = turns.findLast((t) => t.who === "ai")?.text ?? "";
+      // Array.prototype.findLast は Safari などで未対応のため互換実装
+      const lastAi = [...turns].reverse().find((t) => t.who === "ai")?.text ?? "";
       const r = await fetch("/api/roleplay/model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -476,7 +493,10 @@ setTurns((t) => [...t, { who: "user", text: userText }]);
 
       <button
         type="button"
-        onClick={() => onRoleplayCompleted?.({})}
+        onClick={() => {
+          onRoleplayCompleted?.({});
+          onStepDone?.("roleplay");
+        }}
         className="mt-3 rounded-md border px-3 py-1 text-xs hover:bg-gray-50"
       >
         ✅ ロールプレイ達成
