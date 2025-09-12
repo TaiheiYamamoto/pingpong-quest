@@ -1,7 +1,7 @@
 // app/page.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React from "react";
 import { useToast } from "./components/Toast";
 import SessionRunner, { type Demand } from "./components/SessionRunner";
 import KpiPanel, { type KpiState } from "./components/KpiPanel";
@@ -10,13 +10,13 @@ import Celebration from "./components/Celebration";
 export default function Page() {
   const { push } = useToast();
 
-  /** ====== ニーズ入力（初期値） ====== */
-  const [demand, setDemand] = useState<Demand>({
+  /** ====== ユーザーの選択（ニーズ入力） ====== */
+  const [demand, setDemand] = React.useState<Demand>({
     profile: {
       ageRange: "30s",
       gender: "male",
       role: "staff",
-      industry: "food_service",
+      industry: "food_service", // レストラン（飲食）
       useCase: "inbound_service",
     },
     level: {
@@ -28,30 +28,39 @@ export default function Page() {
     prefs: { lang: "ja", mode: "full_mix" },
   });
 
-  /** ====== セッション開始/進捗 ====== */
-  const [started, setStarted] = useState(false);
-  const [kpi, setKpi] = useState<KpiState>({
+  const [started, setStarted] = React.useState(false);
+
+  /** ====== KPI & タイマー ====== */
+  const [kpi, setKpi] = React.useState<KpiState>({
     phrasesDone: 0,
     phrasesGoal: 10,
     roleplayCompleted: false,
     stepsDone: 0,
     stepsGoal: 3,
   });
+  const [startedAt, setStartedAt] = React.useState<number | null>(null);
+  const [elapsed, setElapsed] = React.useState(0);
+  React.useEffect(() => {
+    if (!startedAt) return;
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
 
   const sessionClear =
     kpi.phrasesDone >= kpi.phrasesGoal &&
     kpi.roleplayCompleted &&
     kpi.stepsDone >= kpi.stepsGoal;
 
+  /** ====== セッション開始 ====== */
   const startSession = () => {
     setStarted(true);
-    setKpi({
+    setStartedAt(Date.now());
+    setKpi((k) => ({
+      ...k,
       phrasesDone: 0,
-      phrasesGoal: 10,
       roleplayCompleted: false,
       stepsDone: 0,
-      stepsGoal: 3,
-    });
+    }));
     push({
       kind: "success",
       title: "キックオフ成功！",
@@ -59,17 +68,37 @@ export default function Page() {
     });
   };
 
-  /** ====== 表示用のラベル ====== */
-  const genreText = useMemo(() => {
+  /** ====== コーチTips ====== */
+  const coachTips = React.useMemo(() => {
+    const genreLabel: Record<Demand["profile"]["industry"], string> = {
+      food_service: "レストラン",
+      hotel: "ホテル",
+      retail: "商店",
+      transport: "移動・交通",
+      other: "おもてなし",
+    };
+    const g = genreLabel[demand.profile.industry];
+    const lv = demand.level.cefr;
+    return [
+      `今日は ${g} × ${lv} にフォーカス。短く・はっきり・笑顔で！`,
+      "英語は“伝わったら勝ち”。完璧よりまず回数をこなそう。",
+      "聞き返されたらチャンス！言い換え1パターンを用意して安心。",
+      "音読は“耳＞口＞目”。声に出す回数が定着のカギ。",
+      "ロールプレイでは、返答＋ひとこと気遣いが好印象！",
+    ];
+  }, [demand.profile.industry, demand.level.cefr]);
+
+  /** ====== ヘッダーバッジの表示文言 ====== */
+  const genreText = React.useMemo(() => {
     switch (demand.profile.industry) {
       case "food_service":
         return "レストラン（飲食）";
       case "hotel":
-        return "ホテル（旅行・交通）";
+        return "ホテル（旅行）";
       case "retail":
         return "商店（小売）";
       case "transport":
-        return "交通";
+        return "移動・交通";
       default:
         return "おもてなし（観光ガイド）";
     }
@@ -77,11 +106,11 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-white relative overflow-x-clip">
-      {/* 背景 */}
-      <div className="pointer-events-none absolute -top-24 -left-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-fuchsia-300 via-pink-300 to-amber-200 blur-3xl opacity-40"></div>
-      <div className="pointer-events-none absolute -bottom-24 -right-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-sky-300 via-teal-200 to-lime-200 blur-3xl opacity-40"></div>
+      {/* 背景の大胆グラデーション */}
+      <div className="pointer-events-none absolute -top-24 -left-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-fuchsia-300 via-pink-300 to-amber-200 blur-3xl opacity-40" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-sky-300 via-teal-200 to-lime-200 blur-3xl opacity-40" />
 
-      {/* ヘッダ */}
+      {/* header */}
       <header className="sticky top-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/80 border-b">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -100,16 +129,16 @@ export default function Page() {
         </div>
       </header>
 
-      {/* ヒーロー */}
+      {/* hero */}
       <section className="max-w-6xl mx-auto px-4 pt-10 pb-6">
         <div className="grid md:grid-cols-[1.2fr,0.8fr] gap-8 items-center">
           <div>
             <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
               最速で
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500">
-                “使える英語”
+                “使えるおもてなし英語”
               </span>
-              を。
+              をトレーニング
             </h1>
             <p className="mt-4 text-gray-700 text-lg">
               ①フレーズ → ②AIロールプレイ → ③復習。ジャンルとレベルに合わせて、毎回すぐ実戦投入できる形で身につきます。
@@ -132,7 +161,7 @@ export default function Page() {
       {/* ニーズ入力 */}
       <section className="max-w-6xl mx-auto px-4 pb-6">
         <div className="rounded-3xl border bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">身につけたい英語のジャンル</h2>
+          <h2 className="text-lg font-semibold">身につけたいおもてなし英語のジャンル</h2>
 
           {/* ジャンル */}
           <div className="mt-4">
@@ -143,17 +172,14 @@ export default function Page() {
               onChange={(e) =>
                 setDemand((d) => ({
                   ...d,
-                  profile: {
-                    ...d.profile,
-                    industry: e.target.value as Demand["profile"]["industry"],
-                  },
+                  profile: { ...d.profile, industry: e.target.value as Demand["profile"]["industry"] },
                 }))
               }
             >
               <option value="food_service">レストラン（飲食）</option>
-              <option value="hotel">ホテル（旅行・交通）</option>
+              <option value="hotel">ホテル（旅行）</option>
               <option value="retail">商店（小売）</option>
-              <option value="transport">交通</option>
+              <option value="transport">移動・交通</option>
               <option value="other">おもてなし（観光ガイド）</option>
             </select>
           </div>
@@ -176,7 +202,7 @@ export default function Page() {
             </select>
           </div>
 
-          {/* 1日学習時間 */}
+          {/* 1日学習時間（任意） */}
           <div className="mt-4">
             <label className="text-sm text-gray-600">1日の学習時間（分）</label>
             <input
@@ -201,9 +227,10 @@ export default function Page() {
         </div>
       </section>
 
-      {/* 本日のセッション */}
+      {/* 本日のセッション（主役） */}
       <section className="max-w-6xl mx-auto px-4 pb-16">
         <div className="grid lg:grid-cols-3 gap-6">
+          {/* 左：セッション */}
           <div className="lg:col-span-2 rounded-3xl border bg-white p-6 shadow-lg ring-1 ring-black/5">
             <div className="text-sm text-gray-500">本日のセッション</div>
             {started ? (
@@ -216,9 +243,7 @@ export default function Page() {
                   onPhrasePlayed={() =>
                     setKpi((k) => ({ ...k, phrasesDone: Math.min(k.phrasesGoal, k.phrasesDone + 1) }))
                   }
-                  onRoleplayCompleted={() =>
-                    setKpi((k) => ({ ...k, roleplayCompleted: true }))
-                  }
+                  onRoleplayCompleted={() => setKpi((k) => ({ ...k, roleplayCompleted: true }))}
                 />
               </div>
             ) : (
@@ -228,12 +253,23 @@ export default function Page() {
             )}
           </div>
 
-          {/* 右カラム：KPIと目標 */}
+          {/* 右：KPI & 目標 & コーチのひとこと */}
           <div className="space-y-6">
+            {/* タイマー */}
+            <div className="rounded-3xl border bg-white p-6 shadow-sm">
+              <div className="text-xs text-gray-500">経過時間</div>
+              <div className="mt-1 text-lg font-semibold tabular-nums">
+                {String(Math.floor(elapsed / 60)).padStart(2, "0")}:
+                {String(elapsed % 60).padStart(2, "0")}
+              </div>
+            </div>
+
+            {/* KPI */}
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <KpiPanel kpi={kpi} />
             </div>
 
+            {/* 今日の目標 */}
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <div className="text-sm text-gray-500">今日の目標</div>
               <ul className="mt-2 text-sm text-gray-800 space-y-2">
@@ -242,11 +278,18 @@ export default function Page() {
                 <li className="rounded-xl border p-3">重要表現の復習で言い換え 2 パターン</li>
               </ul>
             </div>
+
+            {/* コーチのひとこと */}
+            <div className="rounded-3xl border bg-gradient-to-r from-emerald-50 to-teal-50 p-6 shadow-sm">
+              <div className="text-sm text-emerald-700 font-semibold">コーチのひとこと</div>
+              <p className="mt-2 text-sm text-emerald-900">{coachTips[0]}</p>
+              <p className="mt-1 text-xs text-emerald-700">小さな成功体験を3つ積めたら今日は合格！💮</p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 花火 */}
+      {/* 達成演出 */}
       <Celebration show={sessionClear} />
 
       <footer className="sr-only">build: {process.env.NEXT_PUBLIC_BUILD_TAG}</footer>
