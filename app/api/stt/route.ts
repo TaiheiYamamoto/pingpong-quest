@@ -1,14 +1,15 @@
-// app/api/stt/route.ts
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<Response> {
   try {
     const form = await req.formData();
-    // フロントと合わせて "file" を読む
-    const file = form.get("file") as File | null;
+    // フロントは "file" キーで送信
+    const part = form.get("file");
+    const file = part instanceof File ? part : null;
+
     if (!file) {
       return new Response(JSON.stringify({ error: "no file" }), {
         status: 400,
@@ -17,9 +18,8 @@ export async function POST(req: NextRequest) {
     }
 
     const outbound = new FormData();
-    // webm でも m4a でもファイルの中身が使われます（拡張子は任意）
     outbound.append("file", file, file.name || "input.webm");
-    outbound.append("model", "whisper-1");            // 必要に応じて gpt-4o-mini-transcribe でも可
+    outbound.append("model", "whisper-1");
     outbound.append("response_format", "json");
 
     const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -30,15 +30,19 @@ export async function POST(req: NextRequest) {
 
     if (!r.ok) {
       const text = await r.text();
-      return new Response(JSON.stringify({ error: text }), { status: 500 });
+      return new Response(JSON.stringify({ error: text }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const data = (await r.json()) as { text?: string };
     return new Response(JSON.stringify({ text: data.text ?? "" }), {
       headers: { "Content-Type": "application/json" },
     });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e?.message || "stt failed" }), {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "stt failed";
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

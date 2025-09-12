@@ -1,4 +1,3 @@
-// app/api/roleplay/model/route.ts
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -6,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<Response> {
   try {
     const { scene, level, question } = (await req.json()) as {
       scene: string;
@@ -37,20 +36,24 @@ export async function POST(req: NextRequest) {
     });
 
     if (!r.ok) {
-      return new Response(JSON.stringify({ error: await r.text() }), {
+      const text = await r.text();
+      return new Response(JSON.stringify({ error: text }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     const data = await r.json();
-    const answer = (data?.choices?.[0]?.message?.content as string | undefined)?.trim() || "";
-    // フロントが期待しているキー名で返す
+    const answer =
+      (data?.choices?.[0]?.message?.content as string | undefined)?.trim() ?? "";
+
+    // フロント（ensureIdeal）が期待するキー名で返す
     return new Response(JSON.stringify({ ideal: answer }), {
       headers: { "Content-Type": "application/json" },
     });
-  } catch (e: any) {
-    return new Response(JSON.stringify({ error: e?.message || "model failed" }), {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "model failed";
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
