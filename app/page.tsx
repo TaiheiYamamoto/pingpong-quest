@@ -250,37 +250,33 @@ export default function Page() {
 
           {/* 右カラム：進捗 + 目標 + コーチ */}
           <div className="space-y-6">
-            <div className="rounded-3xl border bg-white p-6 shadow-sm">
-              <div className="text-sm text-gray-500">今日の進捗</div>
-              <KpiPanel kpi={kpi} />
-            </div>
+  <div className="rounded-3xl border bg-white p-6 shadow-sm">
+    <KpiPanel kpi={kpi} />
+  </div>
 
-            <div className="rounded-3xl border bg-white p-6 shadow-sm">
-              <div className="text-sm text-gray-500">今日の目標</div>
-              <ul className="mt-2 text-sm text-gray-800 space-y-2">
-                <li className="rounded-xl border p-3">フレーズ 10本を音読（各 3 回）</li>
-                <li className="rounded-xl border p-3">ロールプレイで 1 往復 × 3 セット</li>
-                <li className="rounded-xl border p-3">重要表現の復習で言い換え 2 パターン</li>
-              </ul>
-            </div>
+  <div className="rounded-3xl border bg-white p-6 shadow-sm">
+    <div className="text-sm text-gray-500">今日の目標</div>
+    <ul className="mt-2 text-sm text-gray-800 space-y-2">
+      <li className="rounded-xl border p-3">フレーズ 10本を音読（各 3 回）</li>
+      <li className="rounded-xl border p-3">ロールプレイで 1 往復 × 3 セット</li>
+      <li className="rounded-xl border p-3">重要表現の復習で言い換え 2 パターン</li>
+    </ul>
+  </div>
 
-            <div className="rounded-3xl border bg-gradient-to-r from-emerald-50 to-teal-50 p-6 shadow-sm">
-              <div className="text-sm text-emerald-700 font-semibold">コーチのひとこと</div>
-              <p className="mt-2 text-sm text-emerald-900">
-                {coachTips[0]}
-              </p>
-              <p className="mt-1 text-xs text-emerald-700">
-                小さな成功体験を3つ積めたら今日は合格！💮
-              </p>
-            </div>
+  <div className="rounded-3xl border bg-gradient-to-r from-emerald-50 to-teal-50 p-6 shadow-sm">
+    <div className="text-sm text-emerald-700 font-semibold">コーチのひとこと</div>
+    <p className="mt-2 text-sm text-emerald-900">{coachTips[0]}</p>
+    <p className="mt-1 text-xs text-emerald-700">小さな成功体験を3つ積めたら今日は合格！💮</p>
+  </div>
+</div>
           </div>
         </div>
       </section>
 
-      {/* お祝い */}
-      <Celebration show={showCele} />
+     {/* お祝い */}
+<Celebration show={showCele} />
 
-      <footer className="sr-only">build: {process.env.NEXT_PUBLIC_BUILD_TAG}</footer>
-    </div>
-  );
+<footer className="sr-only">
+  build: {process.env.NEXT_PUBLIC_BUILD_TAG}
+</footer>
 }
