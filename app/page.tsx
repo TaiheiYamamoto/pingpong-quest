@@ -39,18 +39,13 @@ export default function Page() {
 
   // セレブレーション
 const [showCele, setShowCele] = useState(false);
-
-// 1) セッション達成で表示トリガー
+// セレブ（達成時に出して 2 秒で閉じる：1本化）
 useEffect(() => {
-  if (sessionClear) setShowCele(true);
-}, [sessionClear]);
-
-// 2) 2秒後に自動クローズ
-useEffect(() => {
-  if (!showCele) return;
+  if (!sessionClear) return;
+  setShowCele(true);
   const t = setTimeout(() => setShowCele(false), 2000);
   return () => clearTimeout(t);
-}, [showCele]);
+}, [sessionClear]);
 
   /** ====== Week Plan ====== */
   const [week, setWeek] = useState<WeekPlan | null>(null);
@@ -246,21 +241,21 @@ const weekUi = useMemo(() => {
       </section>
 
       {/* 週ナビ（あれば） */}
-      {week && (
-        <section className="max-w-6xl mx-auto px-4 pb-2">
-          <div className="flex flex-wrap gap-2">
-            {week.days.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => { setDayIndex(i); setShowCele(false); setStarted(false); }}
-                className={`px-3 py-1 rounded-full text-xs border ${i === dayIndex ? "bg-black text-white border-black" : "hover:bg-gray-50"}`}
-              >
-                Day {i + 1}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+      {(week?.days ?? []).length > 0 && (
+  <section className="max-w-6xl mx-auto px-4 pb-2">
+    <div className="flex flex-wrap gap-2">
+      {(week?.days ?? []).map((_, i) => (
+        <button
+          key={i}
+          onClick={() => { setDayIndex(i); setShowCele(false); setStarted(false); }}
+          className={`px-3 py-1 rounded-full text-xs border ${i === dayIndex ? "bg-black text-white border-black" : "hover:bg-gray-50"}`}
+        >
+          Day {i + 1}
+        </button>
+      ))}
+    </div>
+  </section>
+)}
 
       {/* 本日のセッション */}
       <section className="max-w-6xl mx-auto px-4 pb-16">
@@ -289,10 +284,11 @@ const weekUi = useMemo(() => {
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <KpiPanel kpi={kpi} />
             </div>
+  {weekUi.length > 0 && (
   <div className="rounded-3xl border bg-white p-6 shadow-sm">
     <div className="text-sm text-gray-500">今週のプラン</div>
     <div className="mt-2 grid grid-cols-2 gap-2">
-      {week.map((d, i) => (
+      {weekUi.map((d, i) => (
         <div
           key={d.date}
           className={`rounded-xl border p-2 text-xs ${
@@ -305,6 +301,7 @@ const weekUi = useMemo(() => {
       ))}
     </div>
   </div>
+)}
 
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <div className="text-sm text-gray-500">今日の目標</div>
