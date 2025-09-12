@@ -73,12 +73,14 @@ export default function SessionRunner({
   onRoleplayCompleted,
   onStepDone,
   onStart,
+  phrasesOverride,
 }: {
   demand: Demand;
   onPhrasePlayed?: (index: number) => void;
   onRoleplayCompleted?: (payload?: { score?: number }) => void;
   onStepDone?: (id: "phrases" | "roleplay" | "review") => void;
   onStart?: () => void;
+  phrasesOverride?: Phrase[]; // ← 追加
 }) {
   const { push } = useToast();
   const steps: StepId[] = ["listen_and_repeat", "roleplay_ai", "review"];
@@ -91,37 +93,44 @@ export default function SessionRunner({
     ? demand.level.cefr
     : "A2";
 
-  // フレーズはここで一回だけ取得
-  const [phrases, setPhrases] = React.useState<Phrase[]>([]);
+  // フレーズ（override が来たらそれを優先）
+  const [phrases, setPhrases] = React.useState<Phrase[]>(phrasesOverride ?? []);
   const [loading, setLoading] = React.useState<boolean>(false);
 
-  React.useEffect(() => {
-    let aborted = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const r = await fetch("/api/phrases", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ genre, level }),
-        });
-        const j = (await r.json()) as PhrasesResp | { error?: string };
-        if (!r.ok || !("phrases" in j)) throw new Error(("error" in j && j.error) || "フレーズ取得に失敗しました");
-        if (!aborted) setPhrases(j.phrases.slice(0, 10));
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "エラーが発生しました";
-        if (!aborted) {
-          setPhrases([]);
-          push({ kind: "error", title: "フレーズ取得エラー", message: msg });
-        }
-      } finally {
-        if (!aborted) setLoading(false);
+  // フレーズ取得（週プラン差し込み対応）
+React.useEffect(() => {
+  // 1) 週プランからの差し込みがあれば API を呼ばない
+  if (phrasesOverride && phrasesOverride.length > 0) {
+    setPhrases(phrasesOverride.slice(0, 10));
+    return;
+  }
+
+  // 2) 差し込みがなければ従来どおり取得
+  let aborted = false;
+  (async () => {
+    try {
+      setLoading(true);
+      const r = await fetch("/api/phrases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ genre, level }),
+      });
+      const j = (await r.json()) as PhrasesResp | { error?: string };
+      if (!r.ok || !("phrases" in j)) throw new Error(("error" in j && j.error) || "フレーズ取得に失敗しました");
+      if (!aborted) setPhrases(j.phrases.slice(0, 10));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "エラーが発生しました";
+      if (!aborted) {
+        setPhrases([]);
+        push({ kind: "error", title: "フレーズ取得エラー", message: msg });
       }
-    })();
-    return () => {
-      aborted = true;
-    };
-  }, [genre, level, push]);
+    } finally {
+      if (!aborted) setLoading(false);
+    }
+  })();
+  return () => { aborted = true; };
+  // ここに phrasesOverride を入れておくのがポイント
+}, [genre, level, phrasesOverride, push]);
 
   // セッション開始時のKPI初期化
   React.useEffect(() => {
@@ -170,7 +179,12 @@ export default function SessionRunner({
           <button
             type="button"
             onClick={() => {
-              const id = steps[current] === "listen_and_repeat" ? "phrases" : steps[current] === "roleplay_ai" ? "roleplay" : "review";
+              const id =
+                steps[current] === "listen_and_repeat"
+                  ? "phrases"
+                  : steps[current] === "roleplay_ai"
+                  ? "roleplay"
+                  : "review";
               onStepDone?.(id);
               setCurrent((c) => Math.min(c + 1, steps.length - 1));
             }}
@@ -341,7 +355,12 @@ function RoleplayBlock({
     if (!recording) {
       // start
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? { mimeType: "audio/webm;codecs=opus" } : undefined);
+      const rec = new MediaRecorder(
+        stream,
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? { mimeType: "audio/webm;codecs=opus" }
+          : undefined
+      );
       const chunks: Blob[] = [];
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.push(e.data);
@@ -352,7 +371,7 @@ function RoleplayBlock({
         try {
           // ---- STT
           const form = new FormData();
-          form.append("file", new File([blob], "user.webm", { type: "audio/webm" })); // ← /api/stt は 'file'想定
+          form.append("file", new File([blob], "user.webm", { type: "audio/webm" })); // /api/stt は 'file'想定
           const stt = await fetch("/api/stt", { method: "POST", body: form });
 
           // 返却が JSON かを厳密チェック（HTMLエラー等を拾う）
@@ -407,43 +426,47 @@ function RoleplayBlock({
   };
 
   // 模範解答（start/replyで来ない場合のフォールバック）
-const ensureIdeal = async () => {
-  // 既に取得済みならトグル表示
-  if (ideal) {
-    setShowIdeal((v) => !v);
-    return;
-  }
-
-  try {
-    const lastAi = turns.findLast((t) => t.who === "ai")?.text ?? "";
-    const r = await fetch("/api/roleplay/model", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scene, level, question: lastAi }),
-    });
-
-    // JSON 以外（HTML等）の場合はテキストをそのままエラー表示
-    const ctype = r.headers.get("content-type") || "";
-    if (!ctype.includes("application/json")) {
-      throw new Error(await r.text());
+  const ensureIdeal = async () => {
+    if (ideal) {
+      setShowIdeal((v) => !v);
+      return;
     }
+    try {
+      // 最後の AI 発話を自前で検索（findLast 非依存）
+      const lastAi = (() => {
+        for (let i = turns.length - 1; i >= 0; i--) {
+          if (turns[i].who === "ai") return turns[i].text;
+        }
+        return "";
+      })();
 
-    // {model} / {ideal} どちらでも受ける
-    const j = (await r.json()) as { model?: string; ideal?: string; error?: string };
-    const answer = j.model ?? j.ideal;
+      const r = await fetch("/api/roleplay/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scene, level, question: lastAi }),
+      });
 
-    if (!r.ok || !answer) {
-      throw new Error(j.error || "模範解答を取得できませんでした");
+      // JSON 以外（HTML等）の場合はテキストをそのままエラー表示
+      const ctype = r.headers.get("content-type") || "";
+      if (!ctype.includes("application/json")) {
+        throw new Error(await r.text());
+      }
+
+      // {model} / {ideal} どちらでも受ける
+      const j = (await r.json()) as { model?: string; ideal?: string; error?: string };
+      const answer = j.model ?? j.ideal;
+
+      if (!r.ok || !answer) {
+        throw new Error(j.error || "模範解答を取得できませんでした");
+      }
+
+      setIdeal(answer);
+      setShowIdeal(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "エラーが発生しました";
+      push({ kind: "error", title: "模範解答の取得に失敗", message: msg });
     }
-
-    setIdeal(answer);
-    setShowIdeal(true);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "エラーが発生しました";
-    // 何が起きたか見えるように詳細を出す
-    push({ kind: "error", title: "模範解答の取得に失敗", message: msg });
-  }
-};
+  };
 
   return (
     <div className="rounded-2xl border p-4">
@@ -463,7 +486,9 @@ const ensureIdeal = async () => {
         <button
           type="button"
           onClick={toggleRec}
-          className={`rounded-lg px-4 py-2 text-sm border hover:bg-gray-50 ${recording ? "bg-red-600 text-white border-red-600" : ""}`}
+          className={`rounded-lg px-4 py-2 text-sm border hover:bg-gray-50 ${
+            recording ? "bg-red-600 text-white border-red-600" : ""
+          }`}
         >
           {recording ? "■ 録音停止" : "🎙 録音開始"}
         </button>
@@ -480,6 +505,7 @@ const ensureIdeal = async () => {
       {/* 会話ログ */}
       <div className="mt-4 rounded-xl border p-4">
         <div className="text-sm text-gray-600">ロールプレイ</div>
+        <div className="mt-1 text-xs text-gray-500">進行: {round}/{MAX_ROUNDS}</div>
         <audio ref={audioRef} controls className="mt-3 w-full" />
         <ul className="mt-3 space-y-2 text-sm">
           {turns.map((t, i) => (
@@ -517,14 +543,17 @@ function ReviewBlock({ genre, level, phrases }: { genre: Genre; level: CEFR; phr
   const list = phrases.slice(0, 5);
   return (
     <div className="rounded-2xl border p-4">
-      <div className="text-sm text-gray-600">本日のまとめ（ジャンル: {genre} / レベル: {cefrLabel[level]}）</div>
+      <div className="text-sm text-gray-600">
+        本日のまとめ（ジャンル: {genre} / レベル: {cefrLabel[level]}）
+      </div>
       {list.length === 0 ? (
         <div className="mt-2 text-sm text-gray-500">復習用の表現がありません。</div>
       ) : (
         <ul className="mt-2 list-disc pl-5 text-sm space-y-1 text-gray-700">
           {list.map((p, i) => (
             <li key={`${p.en}-${i}`}>
-              <span className="font-medium">{p.en}</span> <span className="text-gray-500">— {p.ja}</span>
+              <span className="font-medium">{p.en}</span>{" "}
+              <span className="text-gray-500">— {p.ja}</span>
             </li>
           ))}
         </ul>
