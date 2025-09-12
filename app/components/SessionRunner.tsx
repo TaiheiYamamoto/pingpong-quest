@@ -7,7 +7,7 @@ import { useToast } from "./Toast";
 /* ========= 型 ========= */
 type CEFR = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
-type Demand = {
+export type Demand = { 
   profile: {
     ageRange: "10s" | "20s" | "30s" | "40s" | "50s+";
     gender: "male" | "female" | "other" | "prefer_not_to_say";
