@@ -14,7 +14,7 @@ export default function Page() {
       gender: "male",
       role: "staff",
       /** ← ジャンル（ドロップダウンで変更） */
-      industry: "restaurant",
+      industry: "food_service",
       useCase: "inbound_service",
     },
     level: {
@@ -87,12 +87,12 @@ export default function Page() {
                 }))
               }
             >
-              <option value="restaurant">レストラン（飲食）</option>
-              <option value="hotel">ホテル（旅行・交通）</option>
-              <option value="retail">商店（小売）</option>
-              <option value="guide">おもてなし（観光ガイド）</option>
-            </select>
-          </div>
+  <option value="food_service">レストラン（飲食）</option>
+  <option value="hotel">ホテル（旅行・交通）</option>
+  <option value="retail">商店（小売）</option>
+  <option value="transport">交通</option>
+  <option value="other">おもてなし（観光ガイド）</option>
+</select>
 
           {/* レベル（自己申告） */}
           <div className="mt-4">
