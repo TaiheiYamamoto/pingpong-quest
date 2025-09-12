@@ -44,30 +44,6 @@ const [showCele, setShowCele] = useState(false);
 useEffect(() => {
   if (sessionClear) setShowCele(true);
 }, [sessionClear]);
-// 1week プラン
-type DayPlan = { date: string; label: string; done: boolean };
-const [week, setWeek] = useState<DayPlan[]>([]);
-
-// 7日ぶんを生成（初回のみ）
-useEffect(() => {
-  const today = new Date();
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const ymd = (d: Date) => d.toISOString().slice(0, 10);
-  const w = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const youbi = "日月火水木金土"[d.getDay()];
-    return { date: ymd(d), label: `${d.getMonth() + 1}/${d.getDate()}(${youbi})`, done: false };
-  });
-  setWeek(w);
-}, []);
-
-// セッション達成時に、当日を完了にマーク
-useEffect(() => {
-  if (!sessionClear) return;
-  const today = new Date().toISOString().slice(0, 10);
-  setWeek((w) => w.map((d) => (d.date === today ? { ...d, done: true } : d)));
-}, [sessionClear]);
 
 // 2) 2秒後に自動クローズ
 useEffect(() => {
@@ -127,7 +103,24 @@ useEffect(() => {
       push({ kind: "error", title: "週プラン生成エラー", message: msg });
     }
   };
+// 106行目から追加
+const weekUi = useMemo(() => {
+  if (!week) return [];
+  const start = new Date(week.weekStartISO);
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  const doneKey = `atoz-week-done:${week.weekStartISO}`;
+  const doneDates = new Set<string>(
+    JSON.parse(localStorage.getItem(doneKey) ?? "[]")
+  );
 
+  return week.days.map((_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const label = `${d.getMonth() + 1}/${d.getDate()}(${"日月火水木金土"[d.getDay()]})`;
+    const date = ymd(d);
+    return { date, label, done: doneDates.has(date) };
+  });
+}, [week]);
   const todayPhrases: Phrase[] =
     week?.days?.[dayIndex]?.phrases?.slice(0, 10) ?? [];
 
@@ -296,7 +289,6 @@ useEffect(() => {
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <KpiPanel kpi={kpi} />
             </div>
-
   <div className="rounded-3xl border bg-white p-6 shadow-sm">
     <div className="text-sm text-gray-500">今週のプラン</div>
     <div className="mt-2 grid grid-cols-2 gap-2">
