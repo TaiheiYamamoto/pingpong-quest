@@ -366,8 +366,8 @@ if (!stt.ok || !j.text) {
   throw new Error(j.error || "音声を認識できませんでした");
 }
 
-    const userText = sttJson.text.trim();
-    setTurns((t) => [...t, { who: "user", text: userText }]);
+const userText = j.text.trim();         // ← j を使う
+setTurns((t) => [...t, { who: "user", text: userText }]);
 
     // ---- AI 返答
     const replyRes = await fetch("/api/roleplay/reply", {
