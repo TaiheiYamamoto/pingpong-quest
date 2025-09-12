@@ -79,7 +79,7 @@ export default function SessionRunner({
   onPhrasePlayed?: (index: number) => void;
   onRoleplayCompleted?: (payload?: { score?: number }) => void;
   onStepDone?: (id: "phrases" | "roleplay" | "review") => void;
-  onStart?: () => void; // ← 追加（KPI/タイマー初期化用）
+  onStart?: () => void;
 }) {
   const steps: StepId[] = ["listen_and_repeat", "roleplay_ai", "review"];
   const [current, setCurrent] = React.useState<number>(0);
@@ -223,7 +223,8 @@ function ListenAndRepeat({
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "エラーが発生しました";
-      useToast().push({ kind: "error", title: "再生できません", message: msg });
+      // ★ 修正点：Hook を再度呼ばず、上で取得した push を使う
+      push({ kind: "error", title: "再生できません", message: msg });
     } finally {
       setLoadingIndex(null);
       onPhrasePlayed?.(idx);
@@ -298,7 +299,6 @@ function RoleplayBlock({
   const [, setRound] = React.useState<number>(0); // 最大3ターン
   const MAX_ROUNDS = 3;
 
-  // 音声合成
   async function speak(text: string) {
     const r2 = await fetch("/api/tts", {
       method: "POST",
@@ -315,9 +315,8 @@ function RoleplayBlock({
     }
   }
 
-  // AIの最初の質問
   const start = async () => {
-    onStart?.(); // KPIリセットやタイマー開始
+    onStart?.();
     try {
       const r = await fetch("/api/roleplay/start", {
         method: "POST",
@@ -337,19 +336,15 @@ function RoleplayBlock({
     }
   };
 
-  // 録音開始/停止（Safari対策含む）
   const toggleRec = async () => {
     if (!recording) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // ブラウザごとに使えるコーデックを選ぶ
       const mime =
         MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
           : MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")
           ? "audio/mp4;codecs=mp4a.40.2"
           : "";
-
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       const chunks: Blob[] = [];
       rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
@@ -357,9 +352,8 @@ function RoleplayBlock({
       rec.onstop = async () => {
         const blob = new Blob(chunks, { type: "audio/webm" });
 
-        // === BEGIN: STT→AI reply（差し替えブロック） ===
         try {
-          // ---- STT（まず JSON かどうか厳密に確認）
+          // ---- STT（まず JSON かどうか確認）
           const form = new FormData();
           form.append("file", new File([blob], "user.webm", { type: "audio/webm" }));
           const stt = await fetch("/api/stt", { method: "POST", body: form });
@@ -384,7 +378,6 @@ function RoleplayBlock({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ scene, level, user: userText, contextId }),
           });
-
           const jr = (await rr.json()) as ReplyResp | { error?: string };
           if (!rr.ok || !("ai" in jr)) {
             throw new Error(("error" in jr && jr.error) || "返答の生成に失敗しました");
@@ -395,19 +388,15 @@ function RoleplayBlock({
           setTurns((t) => [...t, { who: "ai", text: (jr as ReplyResp).ai }]);
           await speak((jr as ReplyResp).ai);
 
-          // ラウンド前進＆完了判定
           setRound((n) => {
             const next = Math.min(n + 1, MAX_ROUNDS);
-            if (next >= MAX_ROUNDS || (jr as ReplyResp).done) {
-              onRoleplayCompleted?.({});
-            }
+            if (next >= MAX_ROUNDS || (jr as ReplyResp).done) onRoleplayCompleted?.({});
             return next;
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "エラーが発生しました";
           push({ kind: "error", title: "処理に失敗しました", message: msg });
         }
-        // === END: STT→AI reply ===
       };
 
       rec.start();
@@ -421,7 +410,6 @@ function RoleplayBlock({
     }
   };
 
-  // 模範解答（start/replyで来ない場合のフォールバック）
   const ensureIdeal = async () => {
     if (ideal) {
       setShowIdeal((v) => !v);
@@ -451,14 +439,9 @@ function RoleplayBlock({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={start}
-          className="rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90"
-        >
+        <button type="button" onClick={start} className="rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90">
           🤖 最初の質問を聞く
         </button>
-
         <button
           type="button"
           onClick={toggleRec}
@@ -466,17 +449,11 @@ function RoleplayBlock({
         >
           {recording ? "■ 録音停止" : "🎙 録音開始"}
         </button>
-
-        <button
-          type="button"
-          onClick={ensureIdeal}
-          className="rounded-lg px-4 py-2 text-sm border hover:bg-gray-50"
-        >
+        <button type="button" onClick={ensureIdeal} className="rounded-lg px-4 py-2 text-sm border hover:bg-gray-50">
           💡 模範解答を表示
         </button>
       </div>
 
-      {/* 会話ログ */}
       <div className="mt-4 rounded-xl border p-4">
         <div className="text-sm text-gray-600">ロールプレイ</div>
         <audio ref={audioRef} controls className="mt-3 w-full" />
@@ -491,7 +468,6 @@ function RoleplayBlock({
           ))}
         </ul>
 
-        {/* 模範解答 */}
         {showIdeal && ideal && (
           <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm">
             <div className="text-amber-800 font-semibold">模範解答</div>
