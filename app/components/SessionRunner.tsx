@@ -407,27 +407,43 @@ function RoleplayBlock({
   };
 
   // 模範解答（start/replyで来ない場合のフォールバック）
-  const ensureIdeal = async () => {
-    if (ideal) {
-      setShowIdeal((v) => !v);
-      return;
+const ensureIdeal = async () => {
+  // 既に取得済みならトグル表示
+  if (ideal) {
+    setShowIdeal((v) => !v);
+    return;
+  }
+
+  try {
+    const lastAi = turns.findLast((t) => t.who === "ai")?.text ?? "";
+    const r = await fetch("/api/roleplay/model", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scene, level, question: lastAi }),
+    });
+
+    // JSON 以外（HTML等）の場合はテキストをそのままエラー表示
+    const ctype = r.headers.get("content-type") || "";
+    if (!ctype.includes("application/json")) {
+      throw new Error(await r.text());
     }
-    try {
-      const lastAi = turns.findLast((t) => t.who === "ai")?.text ?? "";
-      const r = await fetch("/api/roleplay/model", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scene, level, question: lastAi }),
-      });
-      const j = (await r.json()) as { model?: string; error?: string };
-      if (!r.ok || !j.model) throw new Error(j.error || "模範解答を取得できませんでした");
-      setIdeal(j.model);
-      setShowIdeal(true);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "エラーが発生しました";
-      push({ kind: "error", title: "模範解答の取得に失敗", message: msg });
+
+    // {model} / {ideal} どちらでも受ける
+    const j = (await r.json()) as { model?: string; ideal?: string; error?: string };
+    const answer = j.model ?? j.ideal;
+
+    if (!r.ok || !answer) {
+      throw new Error(j.error || "模範解答を取得できませんでした");
     }
-  };
+
+    setIdeal(answer);
+    setShowIdeal(true);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "エラーが発生しました";
+    // 何が起きたか見えるように詳細を出す
+    push({ kind: "error", title: "模範解答の取得に失敗", message: msg });
+  }
+};
 
   return (
     <div className="rounded-2xl border p-4">
