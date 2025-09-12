@@ -16,7 +16,7 @@ export default function Page() {
       ageRange: "30s",
       gender: "male",
       role: "staff",
-      industry: "food_service", // レストラン（飲食）
+      industry: "food_service",
       useCase: "inbound_service",
     },
     level: {
@@ -30,7 +30,7 @@ export default function Page() {
 
   const [started, setStarted] = useState(false);
 
-  /** ====== KPI / タイマー ====== */
+  /** ====== KPI ====== */
   const [kpi, setKpi] = useState<KpiState>({
     phrasesDone: 0,
     phrasesGoal: 10,
@@ -38,24 +38,27 @@ export default function Page() {
     stepsDone: 0,
     stepsGoal: 3,
   });
-
-  const [t0, setT0] = useState<number | null>(null);
-  const [now, setNow] = useState<number>(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const elapsedSec = t0 ? Math.max(0, Math.floor((now - t0) / 1000)) : 0;
-  const hh = String(Math.floor(elapsedSec / 3600)).padStart(2, "0");
-  const mm = String(Math.floor((elapsedSec % 3600) / 60)).padStart(2, "0");
-  const ss = String(elapsedSec % 60).padStart(2, "0");
-
   const sessionClear =
     kpi.phrasesDone >= kpi.phrasesGoal && kpi.roleplayCompleted && kpi.stepsDone >= kpi.stepsGoal;
+
+  /** ====== 経過時間 ====== */
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState<string>("00:00");
+  useEffect(() => {
+    if (!startedAt) return;
+    const id = setInterval(() => {
+      const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+      const ss = String(sec % 60).padStart(2, "0");
+      setElapsed(`${mm}:${ss}`);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
 
   /** ====== 生成（セッション開始） ====== */
   const startSession = () => {
     setStarted(true);
+    setStartedAt(Date.now());
     push({
       kind: "success",
       title: "キックオフ成功！",
@@ -69,7 +72,7 @@ export default function Page() {
       food_service: "レストラン",
       hotel: "ホテル",
       retail: "商店",
-      transport: "交通",
+      transport: "移動・交通",
       other: "おもてなし",
     };
     const g = genreLabel[demand.profile.industry];
@@ -89,11 +92,11 @@ export default function Page() {
       case "food_service":
         return "レストラン（飲食）";
       case "hotel":
-        return "ホテル（旅行・交通）";
+        return "ホテル（旅行）";
       case "retail":
         return "商店（小売）";
       case "transport":
-        return "交通";
+        return "移動・交通";
       default:
         return "おもてなし（観光ガイド）";
     }
@@ -101,7 +104,7 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-white relative overflow-x-clip">
-      {/* 背景グラデ */}
+      {/* 背景ぼかし */}
       <div className="pointer-events-none absolute -top-24 -left-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-fuchsia-300 via-pink-300 to-amber-200 blur-3xl opacity-40"></div>
       <div className="pointer-events-none absolute -bottom-24 -right-24 h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-sky-300 via-teal-200 to-lime-200 blur-3xl opacity-40"></div>
 
@@ -120,44 +123,40 @@ export default function Page() {
           <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
             <span className="px-2 py-0.5 rounded-full bg-gray-100">ジャンル: {genreText}</span>
             <span className="px-2 py-0.5 rounded-full bg-gray-100">CEFR: {demand.level.cefr}</span>
-            <span className="px-2 py-0.5 rounded-full bg-gray-100">経過時間: {hh}:{mm}:{ss}</span>
+            {startedAt && <span className="px-2 py-0.5 rounded-full bg-gray-100">経過: {elapsed}</span>}
           </div>
         </div>
       </header>
 
       {/* hero */}
       <section className="max-w-6xl mx-auto px-4 pt-10 pb-6">
-        <div className="grid md:grid-cols-[1.2fr,0.8fr] gap-8 items-center">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
-              最速で
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500">
-                “使える英語”
-              </span>
-              を。
-            </h1>
-            <p className="mt-4 text-gray-700 text-lg">
-              ①フレーズ → ②AIロールプレイ → ③復習。ジャンルとレベルに合わせて、毎回すぐ実戦投入できる形で身につきます。
-            </p>
+        <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
+          最速で
+          <span className="bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500">
+            “使えるおもてなし英語”
+          </span>
+          をトレーニング
+        </h1>
+        <p className="mt-4 text-gray-700 text-lg">
+          ①フレーズ → ②AIロールプレイ → ③復習。ジャンルとレベルに合わせて、毎回すぐ実戦投入できる形で身につきます。
+        </p>
 
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <button
-                onClick={startSession}
-                className="px-5 py-3 rounded-2xl text-white text-sm font-semibold shadow transition
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <button
+            onClick={startSession}
+            className="px-5 py-3 rounded-2xl text-white text-sm font-semibold shadow transition
                            bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 hover:opacity-90"
-              >
-                {started ? "本日のセッションを再開" : "本日のセッションを開始"}
-              </button>
-              <span className="text-xs text-gray-500">約 {demand.constraints.minutesPerDay} 分 / 日</span>
-            </div>
-          </div>
+          >
+            {started ? "本日のセッションを再開" : "本日のセッションを開始"}
+          </button>
+          <span className="text-xs text-gray-500">約 {demand.constraints.minutesPerDay} 分 / 日</span>
         </div>
       </section>
 
       {/* ニーズ入力 */}
       <section className="max-w-6xl mx-auto px-4 pb-6">
         <div className="rounded-3xl border bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">身につけたい英語のジャンル</h2>
+          <h2 className="text-lg font-semibold">身につけたいおもてなし英語のジャンル</h2>
 
           {/* ジャンル */}
           <div className="mt-4">
@@ -173,9 +172,9 @@ export default function Page() {
               }
             >
               <option value="food_service">レストラン（飲食）</option>
-              <option value="hotel">ホテル（旅行・交通）</option>
+              <option value="hotel">ホテル（旅行）</option>
               <option value="retail">商店（小売）</option>
-              <option value="transport">交通</option>
+              <option value="transport">移動・交通</option>
               <option value="other">おもてなし（観光ガイド）</option>
             </select>
           </div>
@@ -223,7 +222,7 @@ export default function Page() {
         </div>
       </section>
 
-      {/* 本日のセッション（主役） */}
+      {/* 本日のセッション */}
       <section className="max-w-6xl mx-auto px-4 pb-16">
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-3xl border bg-white p-6 shadow-lg ring-1 ring-black/5">
@@ -232,18 +231,15 @@ export default function Page() {
               <div className="mt-2">
                 <SessionRunner
                   demand={demand}
-                  onStepDone={() =>
-                    setKpi((k) => ({ ...k, stepsDone: Math.min(k.stepsGoal, k.stepsDone + 1) }))
-                  }
+                  onStart={() => {
+                    setKpi((k) => ({ ...k, stepsDone: 0, roleplayCompleted: false, phrasesDone: 0 }));
+                    setStartedAt(Date.now());
+                  }}
+                  onStepDone={() => setKpi((k) => ({ ...k, stepsDone: Math.min(k.stepsGoal, k.stepsDone + 1) }))}
                   onPhrasePlayed={() =>
                     setKpi((k) => ({ ...k, phrasesDone: Math.min(k.phrasesGoal, k.phrasesDone + 1) }))
                   }
                   onRoleplayCompleted={() => setKpi((k) => ({ ...k, roleplayCompleted: true }))}
-                  onStart={() => {
-                    // KPIリセット & タイマー開始
-                    setKpi((k) => ({ ...k, stepsDone: 0, roleplayCompleted: false, phrasesDone: 0 }));
-                    setT0(Date.now());
-                  }}
                 />
               </div>
             ) : (
@@ -253,14 +249,15 @@ export default function Page() {
             )}
           </div>
 
-          {/* 右カラム：KPI & 目標 & ひとこと */}
+          {/* 右カラム：進捗 + 目標 + コーチ */}
           <div className="space-y-6">
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
-              <div className="text-sm text-gray-500">今日の進捗</div>
-              <div className="mt-2 text-xs text-gray-500">経過時間：{hh}:{mm}:{ss}</div>
-              <div className="mt-3">
-                <KpiPanel kpi={kpi} />
-              </div>
+              <KpiPanel kpi={kpi} />
+              {startedAt && (
+                <div className="mt-3 text-xs text-gray-500">
+                  経過時間: <span className="font-mono">{elapsed}</span>
+                </div>
+              )}
             </div>
 
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
@@ -281,7 +278,9 @@ export default function Page() {
         </div>
       </section>
 
+      {/* 達成演出 */}
       <Celebration show={sessionClear} />
+
       <footer className="sr-only">build: {process.env.NEXT_PUBLIC_BUILD_TAG}</footer>
     </div>
   );
