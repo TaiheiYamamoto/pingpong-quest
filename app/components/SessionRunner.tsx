@@ -25,6 +25,11 @@ type Genre = "restaurant" | "hotel" | "retail" | "guide";
 type Phrase = { en: string; ja: string };
 type PhrasesResp = { phrases: Phrase[] };
 
+type StartResp = { question: string; ideal?: string; contextId?: string };
+type ReplyResp = { ai: string; ideal?: string; done?: boolean; contextId?: string };
+
+type Turn = { who: "ai" | "user"; text: string; audioUrl?: string };
+
 /* ========= ユーティリティ ========= */
 function toGenre(industry: Demand["profile"]["industry"]): Genre {
   switch (industry) {
@@ -146,12 +151,16 @@ export default function SessionRunner({
         )}
 
         {steps[current] === "roleplay_ai" && (
-          <RoleplayBlock genre={genre} level={level} onRoleplayCompleted={onRoleplayCompleted} />
+          <RoleplayBlock
+            genre={genre}
+            level={level}
+            onRoleplayCompleted={onRoleplayCompleted}
+          />
         )}
 
         {steps[current] === "review" && <ReviewBlock genre={genre} level={level} phrases={phrases} />}
 
-        {/* 任意：次へボタン（KPI連携用） */}
+        {/* 次へ */}
         <div className="mt-4 flex justify-end">
           <button
             type="button"
@@ -182,7 +191,7 @@ function ListenAndRepeat({
   level: CEFR;
   phrases: Phrase[];
   loading: boolean;
-  onPhrasePlayed?: (index: number) => void; // ← 追加
+  onPhrasePlayed?: (index: number) => void;
 }) {
   const { push } = useToast();
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -214,7 +223,7 @@ function ListenAndRepeat({
       push({ kind: "error", title: "再生できません", message: msg });
     } finally {
       setLoadingIndex(null);
-      onPhrasePlayed?.(idx); // ← KPI通知（あれば）
+      onPhrasePlayed?.(idx);
     }
   }
 
@@ -260,7 +269,7 @@ function ListenAndRepeat({
   );
 }
 
-/* ========= ② ロールプレイ ========= */
+/* ========= ② ロールプレイ（録音つき 2〜3ターン + 模範解答） ========= */
 function RoleplayBlock({
   genre,
   level,
@@ -272,61 +281,201 @@ function RoleplayBlock({
 }) {
   const { push } = useToast();
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
-  const [question, setQuestion] = React.useState<string>("");
 
   const scene = sceneForGenre(genre);
 
-  const ask = async () => {
-    try {
-      const r1 = await fetch("/api/roleplay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scene, level, lang: "ja" }),
-      });
-      const j1 = (await r1.json()) as { question?: string; error?: string };
-      if (!r1.ok || !j1.question) throw new Error(j1.error || "AIの質問取得に失敗");
-      setQuestion(j1.question);
+  const [turns, setTurns] = React.useState<Turn[]>([]);
+  const [contextId, setContextId] = React.useState<string | undefined>(undefined);
+  const [recording, setRecording] = React.useState<boolean>(false);
+  const [recorder, setRecorder] = React.useState<MediaRecorder | null>(null);
+  const [ideal, setIdeal] = React.useState<string | undefined>(undefined);
+  const [showIdeal, setShowIdeal] = React.useState<boolean>(false);
+  const [round, setRound] = React.useState<number>(0); // 最大3ターン
+  const MAX_ROUNDS = 3;
 
-      const r2 = await fetch("/api/tts", {
+  // AIの最初の質問
+  const start = async () => {
+    try {
+      const r = await fetch("/api/roleplay/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: j1.question, voice: "default" }),
+        body: JSON.stringify({ scene, level }),
       });
-      if (!r2.ok) throw new Error("TTS生成に失敗しました");
-      const b = await r2.blob();
-      const url = URL.createObjectURL(b);
-      const a = audioRef.current;
-      if (a) {
-        a.src = url;
-        await a.play().catch(() => void 0);
-      }
-      push({ kind: "success", title: "AIが最初の質問をしました", message: "聞き取って返答してみましょう。" });
+      const j = (await r.json()) as StartResp | { error?: string };
+      if (!r.ok || !("question" in j)) throw new Error(("error" in j && j.error) || "開始に失敗しました");
+      setTurns([{ who: "ai", text: j.question }]);
+      setIdeal(j.ideal);
+      setContextId(j.contextId);
+      // 読み上げ
+      await speak(j.question);
+      push({ kind: "success", title: "AIが最初の質問をしました", message: "録音して返答してみましょう。" });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "エラーが発生しました";
-      push({ kind: "error", title: "AIの質問取得に失敗", message: msg });
+      push({ kind: "error", title: "開始できませんでした", message: msg });
+    }
+  };
+
+  // 音声合成
+  async function speak(text: string) {
+    const r2 = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: "default" }),
+    });
+    if (!r2.ok) throw new Error("TTS生成に失敗しました");
+    const b = await r2.blob();
+    const url = URL.createObjectURL(b);
+    const a = audioRef.current;
+    if (a) {
+      a.src = url;
+      await a.play().catch(() => void 0);
+    }
+  }
+
+  // 録音開始/停止
+  const toggleRec = async () => {
+    if (!recording) {
+      // start
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      rec.onstop = async () => {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        // STT
+        try {
+          const form = new FormData();
+          form.append("file", blob, "user.webm");
+          const stt = await fetch("/api/stt", { method: "POST", body: form });
+          const j = (await stt.json()) as { text?: string; error?: string };
+          if (!stt.ok || !j.text) throw new Error(j.error || "音声を認識できませんでした");
+
+          // 会話にユーザーを追加
+          setTurns((t) => [...t, { who: "user", text: j.text }]);
+
+          // AIの返答を取得
+          const r = await fetch("/api/roleplay/reply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scene, level, user: j.text, contextId }),
+          });
+          const jr = (await r.json()) as ReplyResp | { error?: string };
+          if (!r.ok || !("ai" in jr)) throw new Error(("error" in jr && jr.error) || "返答の生成に失敗しました");
+
+          setIdeal((prev) => jr.ideal ?? prev);
+          setContextId(jr.contextId ?? contextId);
+          setTurns((t) => [...t, { who: "ai", text: jr.ai }]);
+          await speak(jr.ai);
+
+          // ラウンドを進める
+          setRound((n) => {
+            const next = Math.min(n + 1, MAX_ROUNDS);
+            if (next >= MAX_ROUNDS || jr.done) {
+              onRoleplayCompleted?.({});
+            }
+            return next;
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "エラーが発生しました";
+          push({ kind: "error", title: "処理に失敗しました", message: msg });
+        }
+      };
+      rec.start();
+      setRecorder(rec);
+      setRecording(true);
+    } else {
+      // stop
+      recorder?.stop();
+      recorder?.stream.getTracks().forEach((t) => t.stop());
+      setRecorder(null);
+      setRecording(false);
+    }
+  };
+
+  // 模範解答（start/replyで来ない場合のフォールバック）
+  const ensureIdeal = async () => {
+    if (ideal) {
+      setShowIdeal((v) => !v);
+      return;
+    }
+    try {
+      const lastAi = turns.findLast((t) => t.who === "ai")?.text ?? "";
+      const r = await fetch("/api/roleplay/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scene, level, question: lastAi }),
+      });
+      const j = (await r.json()) as { ideal?: string; error?: string };
+      if (!r.ok || !j.ideal) throw new Error(j.error || "模範解答を取得できませんでした");
+      setIdeal(j.ideal);
+      setShowIdeal(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "エラーが発生しました";
+      push({ kind: "error", title: "模範解答の取得に失敗", message: msg });
     }
   };
 
   return (
     <div className="rounded-2xl border p-4">
-      <div className="text-sm text-gray-600">AIが最初に質問します。聞いたあとに返答してください。（シーン: {scene}）</div>
-      <button
-        type="button"
-        onClick={ask}
-        className="mt-3 rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90"
-      >
-        🤖 最初の質問を聞く
-      </button>
+      <div className="text-sm text-gray-600">
+        AIが最初に質問します。聞いたあとに返答してください。（シーン: {scene} / 最大 {MAX_ROUNDS} ターン）
+      </div>
 
+      <div className="mt-3 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={start}
+          className="rounded-lg bg-black px-4 py-2 text-sm text-white hover:opacity-90"
+        >
+          🤖 最初の質問を聞く
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleRec}
+          className={`rounded-lg px-4 py-2 text-sm border hover:bg-gray-50 ${recording ? "bg-red-600 text-white border-red-600" : ""}`}
+        >
+          {recording ? "■ 録音停止" : "🎙 録音開始"}
+        </button>
+
+        <button
+          type="button"
+          onClick={ensureIdeal}
+          className="rounded-lg px-4 py-2 text-sm border hover:bg-gray-50"
+        >
+          💡 模範解答を表示
+        </button>
+      </div>
+
+      {/* 会話ログ */}
       <div className="mt-4 rounded-xl border p-4">
-        <div className="text-sm text-gray-600">ロールプレイ（{scene}）</div>
+        <div className="text-sm text-gray-600">ロールプレイ</div>
         <audio ref={audioRef} controls className="mt-3 w-full" />
-        {question && <p className="mt-2 text-sm text-gray-700">質問: {question}</p>}
+        <ul className="mt-3 space-y-2 text-sm">
+          {turns.map((t, i) => (
+            <li key={i} className={t.who === "ai" ? "text-gray-900" : "text-gray-700"}>
+              <span className="inline-block w-10 text-xs font-semibold text-gray-500">
+                {t.who === "ai" ? "AI" : "You"}
+              </span>
+              <span>{t.text}</span>
+            </li>
+          ))}
+        </ul>
+
+        {/* 模範解答 */}
+        {showIdeal && ideal && (
+          <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm">
+            <div className="text-amber-800 font-semibold">模範解答</div>
+            <p className="mt-1 text-amber-900">{ideal}</p>
+          </div>
+        )}
       </div>
 
       <button
         type="button"
-        onClick={() => onRoleplayCompleted?.({ score: undefined })}
+        onClick={() => onRoleplayCompleted?.({})}
         className="mt-3 rounded-md border px-3 py-1 text-xs hover:bg-gray-50"
       >
         ✅ ロールプレイ達成
