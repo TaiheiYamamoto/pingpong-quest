@@ -97,7 +97,7 @@ EXCLUDE: ${excludeList.join(" | ")}`;
       }
 
       // 数が足りない場合はそのまま返す（UI側で保険）
-      outDays.push({
+      numDays.push({
         phrases: unique.slice(0, perDay),
         scene,
         tips: [
@@ -114,7 +114,7 @@ EXCLUDE: ${excludeList.join(" | ")}`;
       genre,
       level,
       perDay,
-      days: outDays,
+      days: numDays,
     };
 
     return new Response(JSON.stringify(plan), { headers: { "Content-Type": "application/json" } });
