@@ -41,9 +41,9 @@ Rules:
 - Exactly N items.`;
 
     const all = new Set<string>(); // 重複除去（英語文ベース）
-    const outDays: DayPlan[] = [];
+    const numDays = Number(days);
 
-    for (let d = 0; d < days; d++) {
+    for (let d = 0; d < numDays; d++) {
       const scene = sceneForGenre(genre);
       const excludeList = [...all].slice(0, 200); // prompt暴走防止で上限
       const user =
