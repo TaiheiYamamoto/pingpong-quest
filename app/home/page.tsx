@@ -1,12 +1,11 @@
-// app/page.tsx
+// app/home/page.tsx
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import { useToast } from "./components/Toast";
-import SessionRunner, { type Demand } from "./components/SessionRunner";
-import KpiPanel, { type KpiState } from "./components/KpiPanel";
-import Celebration from "./components/Celebration";
-import { redirect } from "next/navigation";
+import { useToast } from "../components/Toast";
+import SessionRunner, { type Demand } from "../components/SessionRunner";
+import KpiPanel, { type KpiState } from "../components/KpiPanel";
+import Celebration from "../components/Celebration";
 
 type CEFR = "A1"|"A2"|"B1"|"B2"|"C1"|"C2";
 type Genre = "restaurant" | "hotel" | "retail" | "guide";
@@ -20,13 +19,8 @@ const toGenre = (ind: Demand["profile"]["industry"]): Genre =>
   ind === "food_service" ? "restaurant" :
   ind === "hotel" ? "hotel" :
   ind === "retail" ? "retail" : "guide";
-  
-export default function Home() {
-  redirect("/pingpong");
-  return null;
-}
 
-export default function Page() {
+export default function HomePage() {
   const { push } = useToast();
 
   /** ====== ユーザー選択 ====== */
@@ -43,15 +37,14 @@ export default function Page() {
   const [kpi, setKpi] = useState<KpiState>({ phrasesDone: 0, phrasesGoal: 10, roleplayCompleted: false, stepsDone: 0, stepsGoal: 3 });
   const sessionClear = kpi.phrasesDone >= kpi.phrasesGoal && kpi.roleplayCompleted && kpi.stepsDone >= kpi.stepsGoal;
 
-  // セレブレーション
-const [showCele, setShowCele] = useState(false);
-// セレブ（達成時に出して 2 秒で閉じる：1本化）
-useEffect(() => {
-  if (!sessionClear) return;
-  setShowCele(true);
-  const t = setTimeout(() => setShowCele(false), 2000);
-  return () => clearTimeout(t);
-}, [sessionClear]);
+  // セレブ（達成時に出して 2 秒で閉じる）
+  const [showCele, setShowCele] = useState(false);
+  useEffect(() => {
+    if (!sessionClear) return;
+    setShowCele(true);
+    const t = setTimeout(() => setShowCele(false), 2000);
+    return () => clearTimeout(t);
+  }, [sessionClear]);
 
   /** ====== Week Plan ====== */
   const [week, setWeek] = useState<WeekPlan | null>(null);
@@ -64,7 +57,7 @@ useEffect(() => {
     return `ATOZ_WEEK_${g}_${lv}_${iso}`;
   };
 
-  // 起動時に localStorage から週プランを復元（同じジャンル＆レベルで週内なら使う）
+  // 起動時に localStorage から週プランを復元
   useEffect(() => {
     const g = toGenre(demand.profile.industry);
     try {
@@ -72,7 +65,6 @@ useEffect(() => {
       if (!raw) return;
       const parsed = JSON.parse(raw) as WeekPlan;
       if (parsed.genre !== g || parsed.level !== demand.level.cefr) return;
-      // 今日が週内か判定
       const start = new Date(parsed.weekStartISO);
       const now = new Date();
       const diff = Math.floor((+new Date(now.toDateString()) - +new Date(start.toDateString())) / 86400000);
@@ -104,26 +96,23 @@ useEffect(() => {
       push({ kind: "error", title: "週プラン生成エラー", message: msg });
     }
   };
-// 106行目から追加
-const weekUi = useMemo(() => {
-  if (!week) return [];
-  const start = new Date(week.weekStartISO);
-  const ymd = (d: Date) => d.toISOString().slice(0, 10);
-  const doneKey = `atoz-week-done:${week.weekStartISO}`;
-  const doneDates = new Set<string>(
-    JSON.parse(localStorage.getItem(doneKey) ?? "[]")
-  );
 
-  return week.days.map((_, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const label = `${d.getMonth() + 1}/${d.getDate()}(${"日月火水木金土"[d.getDay()]})`;
-    const date = ymd(d);
-    return { date, label, done: doneDates.has(date) };
-  });
-}, [week]);
-  const todayPhrases: Phrase[] =
-    week?.days?.[dayIndex]?.phrases?.slice(0, 10) ?? [];
+  const weekUi = useMemo(() => {
+    if (!week) return [];
+    const start = new Date(week.weekStartISO);
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    const doneKey = `atoz-week-done:${week.weekStartISO}`;
+    const doneDates = new Set<string>(JSON.parse(localStorage.getItem(doneKey) ?? "[]"));
+    return week.days.map((_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const label = `${d.getMonth() + 1}/${d.getDate()}(${"日月火水木金土"[d.getDay()]})`;
+      const date = ymd(d);
+      return { date, label, done: doneDates.has(date) };
+    });
+  }, [week]);
+
+  const todayPhrases: Phrase[] = week?.days?.[dayIndex]?.phrases?.slice(0, 10) ?? [];
 
   /** ====== セッション開始 ====== */
   const startSession = () => {
@@ -248,20 +237,20 @@ const weekUi = useMemo(() => {
 
       {/* 週ナビ（あれば） */}
       {(week?.days ?? []).length > 0 && (
-  <section className="max-w-6xl mx-auto px-4 pb-2">
-    <div className="flex flex-wrap gap-2">
-      {(week?.days ?? []).map((_, i) => (
-        <button
-          key={i}
-          onClick={() => { setDayIndex(i); setShowCele(false); setStarted(false); }}
-          className={`px-3 py-1 rounded-full text-xs border ${i === dayIndex ? "bg-black text-white border-black" : "hover:bg-gray-50"}`}
-        >
-          Day {i + 1}
-        </button>
-      ))}
-    </div>
-  </section>
-)}
+        <section className="max-w-6xl mx-auto px-4 pb-2">
+          <div className="flex flex-wrap gap-2">
+            {(week?.days ?? []).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => { setDayIndex(i); setShowCele(false); setStarted(false); }}
+                className={`px-3 py-1 rounded-full text-xs border ${i === dayIndex ? "bg-black text-white border-black" : "hover:bg-gray-50"}`}
+              >
+                Day {i + 1}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* 本日のセッション */}
       <section className="max-w-6xl mx-auto px-4 pb-16">
@@ -273,7 +262,7 @@ const weekUi = useMemo(() => {
               <div className="mt-2">
                 <SessionRunner
                   demand={demand}
-                  phrasesOverride={todayPhrases}   // ← 今日の10フレーズを注入
+                  phrasesOverride={todayPhrases}
                   onStepDone={() => setKpi((k) => ({ ...k, stepsDone: Math.min(k.stepsGoal, k.stepsDone + 1) }))}
                   onPhrasePlayed={() => setKpi((k) => ({ ...k, phrasesDone: Math.min(k.phrasesGoal, k.phrasesDone + 1) }))}
                   onRoleplayCompleted={() => setKpi((k) => ({ ...k, roleplayCompleted: true }))}
@@ -290,24 +279,23 @@ const weekUi = useMemo(() => {
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <KpiPanel kpi={kpi} />
             </div>
-  {weekUi.length > 0 && (
-  <div className="rounded-3xl border bg-white p-6 shadow-sm">
-    <div className="text-sm text-gray-500">今週のプラン</div>
-    <div className="mt-2 grid grid-cols-2 gap-2">
-      {weekUi.map((d, i) => (
-        <div
-          key={d.date}
-          className={`rounded-xl border p-2 text-xs ${
-            d.done ? "bg-emerald-50 border-emerald-300" : "bg-white"
-          }`}
-        >
-          <div className="font-medium">Day {i + 1}</div>
-          <div className="text-gray-600">{d.label}</div>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
+
+            {weekUi.length > 0 && (
+              <div className="rounded-3xl border bg-white p-6 shadow-sm">
+                <div className="text-sm text-gray-500">今週のプラン</div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {weekUi.map((d, i) => (
+                    <div
+                      key={d.date}
+                      className={`rounded-xl border p-2 text-xs ${d.done ? "bg-emerald-50 border-emerald-300" : "bg-white"}`}
+                    >
+                      <div className="font-medium">Day {i + 1}</div>
+                      <div className="text-gray-600">{d.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="rounded-3xl border bg-white p-6 shadow-sm">
               <div className="text-sm text-gray-500">今日の目標</div>
