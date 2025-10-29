@@ -1,46 +1,68 @@
-// app/api/pingpong/ai/route.ts
-import OpenAI from "openai";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
+import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+/** クライアントから来る body の型 */
+type GameState = {
+  node: "start" | "fork1L" | "fork1R" | "treasure" | "gate" | "boss" | "goal";
+  hasKey: boolean;
+  score: number;
+  bossHits: number;
+};
+
+type AiBody = {
+  userText: string;
+  state: GameState;
+  currentQuiz?: string;
+  okHint?: boolean;
+};
+
+type AiJson = { speech?: string; feedback?: string };
+
+export async function POST(req: Request): Promise<Response> {
   try {
-    // ★ okHint を受け取る
-    const { userText, state, currentQuiz, okHint } = await req.json();
+    const body: AiBody = await req.json();
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    const system =
+      'You are a concise English coach for A2/B1 learners. ' +
+      'Return JSON only: {"speech": string, "feedback": string}. ' +
+      "Keep sentences short and friendly.";
 
-    const system = `You are a friendly English game master.
-Write short, encouraging feedback in Japanese, and a short English reply for TTS (<=8 words).
-Return JSON only with keys: feedback (JP short), speech (EN short).`;
-
-    const r = await openai.chat.completions.create({
+    const r = await client.chat.completions.create({
       model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
         {
           role: "user",
-          // ★ okHint が undefined でも動くように fallback
-          content: `Quiz: ${currentQuiz ?? "-"}
-User: ${userText ?? "-"}
-LocalOK: ${okHint === undefined ? "unknown" : okHint}
-State: ${JSON.stringify(state ?? {})}`
-        }
+          content:
+            `Quiz: ${body.currentQuiz ?? ""}\n` +
+            `User: ${body.userText}\n` +
+            `OK: ${String(body.okHint ?? false)}`,
+        },
       ],
-      response_format: { type: "json_object" }
     });
 
-    // 念のため安全にパース
-    let payload: any = {};
+    const content: string = r.choices[0]?.message?.content ?? "{}";
+
+    let parsed: AiJson;
     try {
-      payload = JSON.parse(r.choices[0]?.message?.content ?? "{}");
-    } catch {}
+      parsed = JSON.parse(content) as AiJson;
+    } catch {
+      parsed = { speech: "Okay.", feedback: "Good try!" };
+    }
 
-    const feedback = typeof payload.feedback === "string" ? payload.feedback : (okHint ? "よくできたよ！" : "もういちど言ってみよう。");
-    const speech   = typeof payload.speech === "string"   ? payload.speech   : (okHint ? "Great job!" : "Try again!");
-
-    return Response.json({ feedback, speech });
-  } catch (e) {
-    console.error("AI route error", e);
-    return new Response("AI failed", { status: 500 });
+    return new Response(JSON.stringify(parsed), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown error";
+    return new Response(JSON.stringify({ speech: "Sorry.", feedback: msg }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

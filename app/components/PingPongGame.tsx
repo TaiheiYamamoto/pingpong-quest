@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import MapMini from "./MapMini";
+import Image from "next/image";
 
 /* ===== Types ===== */
 type NodeId = "start" | "fork1L" | "fork1R" | "treasure" | "gate" | "boss" | "goal";
@@ -242,15 +243,19 @@ export default function PingPongGame() {
           {/* モンスター */}
           <div className="flex items-center gap-3">
             {monsterImgError ? (
-              <div className="text-3xl">{monsterEmoji[node.monster ?? "slime"]}</div>
-            ) : (
-              <img
-                src={`/monsters/${node.monster ?? "slime"}.png`}
-                alt="monster"
-                className={`w-16 h-16 ${state.node === "boss" ? "animate-bounce" : ""}`}
-                onError={() => setMonsterImgError(true)}
-              />
-            )}
+  <div className="text-3xl">
+    {monsterEmoji[node.monster ?? "slime"]}
+  </div>
+) : (
+  <Image
+    src={`/monsters/${node.monster ?? "slime"}.png`}
+    alt="monster"
+    width={64}
+    height={64}
+    className={state.node === "boss" ? "animate-bounce" : ""}
+    onError={() => setMonsterImgError(true)}
+  />
+)}
             <div className="text-xs text-gray-500">Attribute: {node.monster}</div>
           </div>
 
@@ -309,16 +314,17 @@ export default function PingPongGame() {
           {reward && (
             <div className="p-3 rounded bg-emerald-50 border">
               <div className="font-semibold mb-2">🎉 CLEAR! Reward Card</div>
-              <img
-                src={reward}
-                alt="reward"
-                className="w-56 rounded border"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                  const ph = document.getElementById("reward-fallback");
-                  if (ph) ph.classList.remove("hidden");
-                }}
-              />
+              <Image
+  src={reward}
+  alt="reward"
+  width={224}   // w-56 相当
+  height={128}  // 適宜
+  className="rounded border"
+  onError={() => {
+    const ph = document.getElementById("reward-fallback");
+    if (ph) ph.classList.remove("hidden");
+  }}
+/>
               <div id="reward-fallback" className="hidden w-56 h-32 grid place-items-center rounded border bg-white">
                 <div className="text-center">
                   <div className="text-2xl">✨</div>

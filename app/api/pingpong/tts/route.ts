@@ -1,31 +1,23 @@
-// app/api/pingpong/tts/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import OpenAI from "openai";
-export const runtime = "nodejs"; // EdgeだとStreaming不可な場合があるのでnodeを推奨
 
-export async function POST(req: Request) {
-  try {
-    const { text, voice = "alloy" } = await req.json();
-    if (!text) return new Response("Missing text", { status: 400 });
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+type TtsBody = { text?: string };
 
-    // TTS（mp3 を返す）
-    const speech = await openai.audio.speech.create({
-      model: "gpt-4o-mini-tts",   // もしくは "tts-1"
-      voice,
-      input: text,
-      format: "mp3",
-    });
+export async function POST(req: Request): Promise<Response> {
+  const body: TtsBody = await req.json();
+  const inputText: string = (body.text ?? "Hello!").slice(0, 500);
 
-    const buf = Buffer.from(await speech.arrayBuffer());
-    return new Response(buf, {
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store",
-      },
-    });
-  } catch (e:any) {
-    console.error("TTS error", e);
-    return new Response("TTS failed", { status: 500 });
-  }
+  const speech = await client.audio.speech.create({
+    model: "gpt-4o-mini-tts",
+    voice: "alloy",
+    format: "mp3",
+    input: inputText,
+  });
+
+  const mp3 = Buffer.from(await speech.arrayBuffer());
+  return new Response(mp3, { headers: { "Content-Type": "audio/mpeg" } });
 }
