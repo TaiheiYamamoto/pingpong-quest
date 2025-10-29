@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { ToastProvider } from "./components/Toast"; // これを使います
 import "./globals.css";
 import { Press_Start_2P, Noto_Sans_JP } from "next/font/google";
+import type { ReactNode } from "react";
 
 const pixel = Press_Start_2P({ weight: "400", subsets: ["latin"], variable: "--font-pixel" });
 const jp = Noto_Sans_JP({ weight: ["400","700"], subsets: ["latin"], variable: "--font-jp" });
