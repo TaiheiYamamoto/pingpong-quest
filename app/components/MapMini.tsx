@@ -15,7 +15,8 @@ const TILE_SRC = {
   pin: "/tiles/pin.png",
 } as const;
 
-type ImgMap = { [K in keyof typeof TILE_SRC]?: HTMLImageElement };
+// 変更後（readonlyを外しつつ、扱いやすいRecordに）
+type ImgMap = Partial<Record<keyof typeof TILE_SRC, HTMLImageElement>>;
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
