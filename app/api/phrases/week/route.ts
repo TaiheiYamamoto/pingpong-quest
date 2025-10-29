@@ -23,8 +23,8 @@ const sceneForGenre = (g: Genre) =>
 
 export async function POST(req: NextRequest) {
   try {
-    const { genre, level, perDay = 10, days = 7, _seed } = (await req.json()) as {
-      genre: Genre; level: CEFR; perDay?: number; days?: number; seed?: string;
+    const { genre, level, perDay = 10, days = 7, } = (await req.json()) as {
+      genre: Genre; level: CEFR; perDay?: number; days?: string;
     };
 
     if (!genre || !level) {
