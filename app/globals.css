@@ -24,3 +24,36 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+:root {
+  --panel: #fffaf1;
+  --ink: #222;
+}
+
+/* 8bit風の見出し */
+.hud-title {
+  font-family: var(--font-pixel), system-ui, sans-serif;
+  letter-spacing: 0.03em;
+}
+
+/* パネル */
+.panel {
+  background: var(--panel);
+  border: 3px solid #2224;
+  box-shadow:
+    0 2px 0 #0003,
+    0 6px 0 #0002,
+    inset 0 0 0 2px #fff8;
+}
+
+/* ボタン */
+.btn-8bit {
+  font-family: var(--font-pixel), system-ui, sans-serif;
+  border: 3px solid #111;
+  box-shadow: 0 4px 0 #111;
+  transform: translateY(0);
+  transition: transform .05s;
+}
+.btn-8bit:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #111;
+}
