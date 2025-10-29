@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable */
 // app/api/phrases/week/route.ts
 import type { NextRequest } from "next/server";
 
