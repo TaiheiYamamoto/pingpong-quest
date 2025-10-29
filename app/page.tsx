@@ -6,6 +6,7 @@ import { useToast } from "./components/Toast";
 import SessionRunner, { type Demand } from "./components/SessionRunner";
 import KpiPanel, { type KpiState } from "./components/KpiPanel";
 import Celebration from "./components/Celebration";
+import { redirect } from "next/navigation";
 
 type CEFR = "A1"|"A2"|"B1"|"B2"|"C1"|"C2";
 type Genre = "restaurant" | "hotel" | "retail" | "guide";
@@ -19,6 +20,11 @@ const toGenre = (ind: Demand["profile"]["industry"]): Genre =>
   ind === "food_service" ? "restaurant" :
   ind === "hotel" ? "hotel" :
   ind === "retail" ? "retail" : "guide";
+  
+export default function Home() {
+  redirect("/pingpong");
+  return null;
+}
 
 export default function Page() {
   const { push } = useToast();
