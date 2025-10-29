@@ -51,7 +51,7 @@ useEffect(() => {
   const [week, setWeek] = useState<WeekPlan | null>(null);
   const [dayIndex, setDayIndex] = useState<number>(0);
 
-  const _key = (w?: WeekPlan | null) => {
+  const key = (w?: WeekPlan | null) => {
     const g = toGenre(demand.profile.industry);
     const lv = demand.level.cefr;
     const iso = w?.weekStartISO ?? "";
