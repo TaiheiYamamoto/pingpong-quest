@@ -22,7 +22,7 @@ const BOSS_QUESTIONS: { label: string; check: (s: string) => boolean }[] = [
       const s = raw.toLowerCase();
       const okVerb = /\b(my name is|i am|i'm)\b/.test(s);
       const hasNameLike = /\b[A-Za-z]{2,}\b/.test(raw);
-      return okVerb && hasNameLike; // from は必須にしない
+      return okVerb && hasNameLike;
     },
   },
   {
@@ -85,7 +85,6 @@ const MAP: Record<
     next: ["goal"],
     pos: { r: 5, c: 3 },
     quiz: "Introduce yourself in one sentence.",
-    // 実判定は BOSS_QUESTIONS 側で行うのでここは参考
     check: (s) => /\b(my name is|i am)\b/i.test(s),
     monster: "shadow",
   },
@@ -164,11 +163,11 @@ export default function PingPongGame() {
     const nextState: GameState = { ...state };
 
     if (isBoss) {
-      if (okLocal) nextState.bossHits = state.bossHits + 1; // ★ progress を進める
+      if (okLocal) nextState.bossHits = state.bossHits + 1;
       if (nextState.bossHits >= BOSS_QUESTIONS.length) {
         nextState.node = "goal";
       } else {
-        nextState.node = "boss"; // 継続
+        nextState.node = "boss";
       }
     } else {
       if (okLocal) {
@@ -225,7 +224,7 @@ export default function PingPongGame() {
   /* ===== UI ===== */
   return (
     <div className="min-h-screen bg-[#f5e8c7]">
-      <div className="max-w-3xl mx-auto p-4">
+      <div className="max-w-6xl mx-auto p-4 scale-[1.08] md:scale-[1.15] origin-center">
         <div className="bg-white/80 border rounded-2xl shadow p-5 space-y-4">
           <h2 className="hud-title text-xl">🎮 PingPong English Quest</h2>
 
@@ -243,32 +242,26 @@ export default function PingPongGame() {
           {/* モンスター */}
           <div className="flex items-center gap-3">
             {monsterImgError ? (
-  <div className="text-3xl">
-    {monsterEmoji[node.monster ?? "slime"]}
-  </div>
-) : (
-  <Image
-    src={`/monsters/${node.monster ?? "slime"}.png`}
-    alt="monster"
-    width={64}
-    height={64}
-    className={state.node === "boss" ? "animate-bounce" : ""}
-    onError={() => setMonsterImgError(true)}
-  />
-)}
+              <div className="text-3xl">{monsterEmoji[node.monster ?? "slime"]}</div>
+            ) : (
+              <Image
+                src={`/monsters/${node.monster ?? "slime"}.png`}
+                alt="monster"
+                width={80}
+                height={80}
+                className={state.node === "boss" ? "animate-bounce" : ""}
+                onError={() => setMonsterImgError(true)}
+              />
+            )}
             <div className="text-xs text-gray-500">Attribute: {node.monster}</div>
           </div>
 
-          {/* マップ */}
-          <div className="flex items-center gap-3">
-            <MapMini pos={safePos} />
+          {/* マップ（←ここが拡大済み） */}
+          <div className="flex items-center gap-4">
+            <MapMini pos={safePos} rows={6} cols={6} tile={34} scale={1.25} />
             <div className="text-sm">
-              <div>
-                <b>Stage:</b> {state.node}
-              </div>
-              <div>
-                Key: {state.hasKey ? "🗝️" : "—"} / Score: {state.score}
-              </div>
+              <div><b>Stage:</b> {state.node}</div>
+              <div>Key: {state.hasKey ? "🗝️" : "—"} / Score: {state.score}</div>
             </div>
           </div>
 
@@ -315,16 +308,16 @@ export default function PingPongGame() {
             <div className="p-3 rounded bg-emerald-50 border">
               <div className="font-semibold mb-2">🎉 CLEAR! Reward Card</div>
               <Image
-  src={reward}
-  alt="reward"
-  width={224}   // w-56 相当
-  height={128}  // 適宜
-  className="rounded border"
-  onError={() => {
-    const ph = document.getElementById("reward-fallback");
-    if (ph) ph.classList.remove("hidden");
-  }}
-/>
+                src={reward}
+                alt="reward"
+                width={224}   // w-56 相当
+                height={128}
+                className="rounded border"
+                onError={() => {
+                  const ph = document.getElementById("reward-fallback");
+                  if (ph) ph.classList.remove("hidden");
+                }}
+              />
               <div id="reward-fallback" className="hidden w-56 h-32 grid place-items-center rounded border bg-white">
                 <div className="text-center">
                   <div className="text-2xl">✨</div>

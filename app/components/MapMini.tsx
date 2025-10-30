@@ -1,161 +1,120 @@
-// app/components/MapMini.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 
 type Pos = { r: number; c: number };
+type MarkerType = "chest" | "gate" | "boss" | "goal";
 
-// 必要なアセットのパス（public/ 直下なので / でOK）
-const TILE_SRC = {
-  sand: "/tiles/sand.png",
-  path: "/tiles/path.png",
-  chest: "/tiles/chest.png",
-  gate: "/tiles/gate.png",
-  boss: "/tiles/boss.png",
-  pin: "/tiles/pin.png",
-} as const;
+export default function MapMini({
+  pos,
+  rows = 6,
+  cols = 6,
+  tile = 34,
+  scale = 1.25,
+  bouncing = false,
+  markers = [],
+}: {
+  pos: Pos;                     // 現在地（1始まり）
+  rows?: number;
+  cols?: number;
+  tile?: number;                // 1マスのピクセル基準
+  scale?: number;               // 拡大率
+  bouncing?: boolean;           // ボス時のピン演出
+  markers?: Array<{ type: MarkerType; pos: Pos }>;
+}) {
+  const W = cols * tile * scale;
+  const H = rows * tile * scale;
 
-// 変更後（readonlyを外しつつ、扱いやすいRecordに）
-type ImgMap = Partial<Record<keyof typeof TILE_SRC, HTMLImageElement>>;
+  // 画像の有無でフォールバック
+  const [pinErr, setPinErr] = useState(false);
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = src;
-    img.onload = async () => {
-      try {
-        // decode() があるブラウザではデコード完了まで待つ（描画の確実性UP）
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (typeof (img as any).decode === "function") {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (img as any).decode();
-        }
-      } catch {
-        // Safari など decode 未対応は無視
-      }
-      resolve(img);
-    };
-    img.onerror = reject;
+  // マーカー種別 → 画像パス
+  const markerImg: Record<MarkerType, string> = {
+    chest: "/tiles/chest.png",
+    gate: "/tiles/gate.png",
+    boss: "/tiles/boss.png",
+    goal: "/tiles/goal.png",
+  };
+
+  // 絶対配置のヘルパ
+  const toXY = (p: Pos) => ({
+    left: (p.c - 1) * tile * scale,
+    top: (p.r - 1) * tile * scale,
+    width: tile * scale,
+    height: tile * scale,
   });
-}
-
-export default function MapMini({ pos }: { pos: Pos }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [imgs, setImgs] = useState<ImgMap>({});
-  const [ready, setReady] = useState(false);
-
-  // 7x7 の固定マップ（必要に応じて編集）
-  const H = 7;
-  const W = 7;
-  const cell = 28; // CSS px（あとで DPR スケール）
-  const pad = 6;
-
-  const grid = useMemo(() => {
-    // シンプルに砂地ベース、通路・宝箱・門・ボス配置（例）
-    const base = Array.from({ length: H }, () => Array.from({ length: W }, () => "sand" as keyof typeof TILE_SRC));
-    // 道
-    for (let r = 1; r <= 4; r++) base[r][1] = "path";
-    for (let c = 1; c <= 3; c++) base[4][c] = "path";
-    // 宝箱・門・ボス（お好みで）
-    base[4][4] = "chest";
-    base[3][3] = "gate";
-    base[5][3] = "boss";
-    return base;
-  }, []);
-
-  // アセットのプリロード（初回のみ）
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        Object.entries(TILE_SRC).map(async ([k, src]) => {
-          const img = await loadImage(src);
-          return [k, img] as const;
-        })
-      );
-      if (!cancelled) {
-        const map: ImgMap = {};
-        entries.forEach(([k, img]) => (map[k as keyof typeof TILE_SRC] = img));
-        setImgs(map);
-        setReady(true);
-      }
-    })().catch(() => {
-      // 読み込み失敗時は ready=false のまま（下でフォールバック描画）
-      setReady(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // 描画
-  useEffect(() => {
-    const cvs = canvasRef.current;
-    if (!cvs) return;
-
-    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-    const width = pad * 2 + W * cell;
-    const height = pad * 2 + H * cell;
-    cvs.width = width * dpr;
-    cvs.height = height * dpr;
-    cvs.style.width = `${width}px`;
-    cvs.style.height = `${height}px`;
-
-    const ctx = cvs.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    // 背景
-    ctx.fillStyle = "#fff";
-    ctx.strokeStyle = "#d4d4d4";
-    ctx.lineWidth = 1;
-    ctx.roundRect(0.5, 0.5, width - 1, height - 1, 8);
-    ctx.stroke();
-
-    // タイル描画
-    for (let r = 0; r < H; r++) {
-      for (let c = 0; c < W; c++) {
-        const x = pad + c * cell;
-        const y = pad + r * cell;
-
-        if (ready && imgs.sand) {
-          // まず砂地
-          ctx.drawImage(imgs.sand as HTMLImageElement, x, y, cell, cell);
-
-          // 上書きのタイルがあれば描画
-          const kind = grid[r][c];
-          if (kind !== "sand" && imgs[kind as keyof typeof TILE_SRC]) {
-            ctx.drawImage(imgs[kind as keyof typeof TILE_SRC] as HTMLImageElement, x, y, cell, cell);
-          }
-        } else {
-          // フォールバック（画像未ロード時）：薄い枠のセル
-          ctx.fillStyle = r === pos.r && c === pos.c ? "#fde68a" : "#fafafa";
-          ctx.fillRect(x, y, cell, cell);
-          ctx.strokeStyle = "#e5e7eb";
-          ctx.strokeRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
-        }
-      }
-    }
-
-    // 現在位置ピン
-    const px = pad + pos.c * cell + cell / 2;
-    const py = pad + pos.r * cell + cell / 2;
-    if (ready && imgs.pin) {
-      ctx.drawImage(imgs.pin as HTMLImageElement, px - cell / 2, py - cell / 2, cell, cell);
-    } else {
-      ctx.fillStyle = "#ef4444";
-      ctx.beginPath();
-      ctx.arc(px, py, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }, [ready, imgs, pos, cell, pad, grid, H, W]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label="mini map"
-      className="rounded-lg border bg-white"
-    />
+    <div
+      className="relative rounded-2xl border overflow-hidden"
+      style={{ width: W, height: H }}
+    >
+      {/* 砂タイル：画像をリピート */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: `url(/tiles/sand.png)`,
+          backgroundRepeat: "repeat",
+          backgroundSize: `${tile * scale}px ${tile * scale}px`,
+        }}
+      />
+
+      {/* 格子（薄い線） */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: `linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px),
+                            linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)`,
+          backgroundSize: `${tile * scale}px ${tile * scale}px`,
+        }}
+      />
+
+      {/* マーカー（宝箱/ゲート/ボス/ゴール） */}
+      {markers.map((m, i) => (
+        <img
+          key={`${m.type}-${i}`}
+          src={markerImg[m.type]}
+          alt={m.type}
+          style={{
+            position: "absolute",
+            ...toXY(m.pos),
+            imageRendering: "pixelated",
+            objectFit: "contain",
+            padding: Math.max(2, (tile * scale) * 0.08),
+          }}
+        />
+      ))}
+
+      {/* ピン（/tiles/pin.png があればそれ、無ければ丸） */}
+      {pinErr ? (
+        <div
+          className={`absolute rounded-full bg-emerald-700/85 ${bouncing ? "animate-bounce" : ""}`}
+          style={{
+            width: Math.max(8, tile * scale * 0.28),
+            height: Math.max(8, tile * scale * 0.28),
+            left: (pos.c - 0.5) * tile * scale - (tile * scale * 0.14),
+            top: (pos.r - 0.5) * tile * scale - (tile * scale * 0.14),
+            boxShadow: "0 2px 6px rgba(0,0,0,.25)",
+          }}
+          title="you"
+        />
+      ) : (
+        <img
+          src="/tiles/pin.png"
+          alt="pin"
+          onError={() => setPinErr(true)}
+          className={bouncing ? "animate-bounce" : ""}
+          style={{
+            position: "absolute",
+            width: Math.max(16, tile * scale * 0.6),
+            height: Math.max(16, tile * scale * 0.6),
+            left: (pos.c - 0.5) * tile * scale - (Math.max(16, tile * scale * 0.6) / 2),
+            top: (pos.r - 0.5) * tile * scale - (Math.max(16, tile * scale * 0.6) / 2),
+            imageRendering: "pixelated",
+            objectFit: "contain",
+          }}
+        />
+      )}
+    </div>
   );
 }

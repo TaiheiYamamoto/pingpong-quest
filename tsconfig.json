@@ -12,8 +12,15 @@
     "allowJs": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["react", "react-dom", "node"]
+    "types": ["react", "react-dom", "node"],
+    "incremental": true,
+    "isolatedModules": true,
+    "plugins": [{ "name": "next" }],
+    "baseUrl": ".",                       // 基準はプロジェクトルート
+    "paths": {
+      "@/*": ["app/*"]                   // ★ @ は app/ 直下を指す
+    }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
