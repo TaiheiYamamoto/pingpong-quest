@@ -5,6 +5,8 @@ import Image from "next/image";
 import MapMini, { Marker } from "@/components/MapMini";
 import { LEVEL_MAPS, type LevelMap, type NodeId } from "@/data/pingpong/maps";
 
+import type React from "react";
+
 /* ===== Types ===== */
 export type QA = { question: string; answer: string };
 
@@ -218,7 +220,7 @@ export default function PingPongQuest({
               tile={34}
               scale={1.25}
               bouncing={isBoss}
-              markers={markers as any}
+              markers={markers} 
             />
 
             <div className="text-sm">
@@ -233,11 +235,11 @@ export default function PingPongQuest({
               ) : (
                 <img
                   src={monsterSrcs[0]}
-                  onError={(e) => {
-                    const el = e.currentTarget;
-                    if (el.src.endsWith(monsterSrcs[0])) el.src = monsterSrcs[1];
-                    else setImgErr(true);
-                  }}
+  onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const el = e.currentTarget; // HTMLImageElement として型付与される
+    if (el.src.endsWith(monsterSrcs[0])) el.src = monsterSrcs[1];
+    else setImgErr(true);
+  }}
                   alt="monster"
                   width={72}
                   height={72}
