@@ -1,6 +1,6 @@
 // app/pingpong-training/level/[level]/page.tsx
 import Trainer from "../../_components/Trainer";
-import PingPongQuest from "../../_components/pingpong/PingPongQuest";
+import PingPongQuest from "@/pingpong-training/_components/pingpong/PingPongQuest";
 
 type QA = { question: string; answer: string };
 
