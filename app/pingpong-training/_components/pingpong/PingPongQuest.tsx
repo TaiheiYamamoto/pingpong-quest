@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import MapMini, { Marker } from "@/components/MapMini";
+import MapMini from "@/components/MapMini"; // type はローカル定義で賄う
 import { LEVEL_MAPS, type LevelMap, type NodeId } from "@/data/pingpong/maps";
 
 import type React from "react";
@@ -196,15 +196,16 @@ export default function PingPongQuest({
   }
 
   /* ===== マーカー（宝箱・門・ボス・ゴール） ===== */
-  const markers: Marker[] = (["treasure", "gate", "boss", "goal"] as const)
-    .flatMap((k) => {
-    const entry = (MAP as Record<string, { pos?: { r: number; c: number } }>)[k];
-    if (!entry?.pos) return [];
-    const type = (k === "treasure" ? "chest" : k) as Marker["type"];
-  return [{ type, pos: entry.pos }];
-  });
+type NodeWithPos = { pos?: { r: number; c: number } };
+const M = MAP as Record<string, NodeWithPos>;
 
-  /* ===== UI ===== */
+const markers: Marker[] = [];
+if (M.treasure?.pos) markers.push({ type: "chest", pos: M.treasure.pos });
+if (M.gate?.pos)     markers.push({ type: "gate",  pos: M.gate.pos });
+if (M.boss?.pos)     markers.push({ type: "boss",  pos: M.boss.pos });
+if (M.goal?.pos)     markers.push({ type: "goal",  pos: M.goal.pos });
+
+/* ===== UI ===== */
   return (
     <div className="min-h-screen bg-[#f5e8c7]">
       <div className="max-w-6xl mx-auto p-4 scale-[1.06] md:scale-[1.12] origin-center">
