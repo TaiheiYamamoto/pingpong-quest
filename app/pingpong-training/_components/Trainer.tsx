@@ -109,20 +109,16 @@ export default function Trainer({ level, items }: { level: number; items: QA[] }
           </div>
           <div className="flex gap-2">
             {level < 6 && (
- <Link
-href={`/pingpong-training/level/${level + 1}`}
-className="px-4 py-2 rounded-xl border bg-black text-white"
->
-Go to Level {level + 1}
-</Link>
-)}
-<Link href="/pingpong-training" className="px-4 py-2 rounded-xl border">
-Back to Levels
-</Link>
+              <Link
+                href={`/pingpong-training/level/${level + 1}`}
+                className="px-4 py-2 rounded-xl border bg-black text-white"
+              >
+                Go to Level {level + 1}
+              </Link>
             )}
-            <a href="/pingpong-training" className="px-4 py-2 rounded-xl border">
+            <Link href="/pingpong-training" className="px-4 py-2 rounded-xl border">
               Back to Levels
-            </a>
+            </Link>
           </div>
         </div>
       ) : (

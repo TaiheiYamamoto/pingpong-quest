@@ -1,9 +1,8 @@
-/* eslint-disable react/no-unescaped-entities */
 "use client";
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import MapMini from "@/components/MapMini";
+import MapMini, { Marker } from "@/components/MapMini";
 import { LEVEL_MAPS, type LevelMap, type NodeId } from "@/data/pingpong/maps";
 
 /* ===== Types ===== */
@@ -195,12 +194,13 @@ export default function PingPongQuest({
   }
 
   /* ===== マーカー（宝箱・門・ボス・ゴール） ===== */
-  const markers = [
-    { type: "chest", pos: (MAP as any).treasure?.pos },
-    { type: "gate",  pos: (MAP as any).gate?.pos },
-    { type: "boss",  pos: (MAP as any).boss?.pos },
-    { type: "goal",  pos: (MAP as any).goal?.pos },
-  ].filter((m) => m.pos);
+  const markers: Marker[] = (["treasure", "gate", "boss", "goal"] as const)
+    .flatMap((k) => {
+    const entry = (MAP as Record<string, { pos?: { r: number; c: number } }>)[k];
+    if (!entry?.pos) return [];
+    const type = (k === "treasure" ? "chest" : k) as Marker["type"];
+  return [{ type, pos: entry.pos }];
+  });
 
   /* ===== UI ===== */
   return (
