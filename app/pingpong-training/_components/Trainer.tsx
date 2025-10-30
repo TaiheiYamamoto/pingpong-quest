@@ -1,6 +1,7 @@
 // components/pingpong/Trainer.tsx
 "use client";
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 
 export type QA = { question: string; answer: string };
 
@@ -65,7 +66,9 @@ export default function Trainer({ level, items }: { level: number; items: QA[] }
         </div>
 
         <div className="p-5 rounded-2xl border bg-white shadow-sm">
-          <div className="text-xs text-slate-500 mb-2">Your Answer (replace head "You" → "I")</div>
+          <div className="text-xs text-slate-500 mb-2">
+            Your Answer (replace head &quot;You&quot; → &quot;I&quot;)
+            </div>
           <input
             className="w-full rounded-xl border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-400"
             value={input}
@@ -106,12 +109,16 @@ export default function Trainer({ level, items }: { level: number; items: QA[] }
           </div>
           <div className="flex gap-2">
             {level < 6 && (
-              <a
-                href={`/pingpong-training/level/${level + 1}`}
-                className="px-4 py-2 rounded-xl border bg-black text-white"
-              >
-                Go to Level {level + 1}
-              </a>
+ <Link
+href={`/pingpong-training/level/${level + 1}`}
+className="px-4 py-2 rounded-xl border bg-black text-white"
+>
+Go to Level {level + 1}
+</Link>
+)}
+<Link href="/pingpong-training" className="px-4 py-2 rounded-xl border">
+Back to Levels
+</Link>
             )}
             <a href="/pingpong-training" className="px-4 py-2 rounded-xl border">
               Back to Levels
