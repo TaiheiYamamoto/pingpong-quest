@@ -2,7 +2,7 @@
 import Trainer from "../../_components/Trainer";
 import PingPongQuest from "@/pingpong-training/_components/pingpong/PingPongQuest";
 
-type QA = { question: string; answer: string };
+export type QA = { question: string; answer: string; qJa?: string; aJa?: string };
 
 const LEVEL_CSV: Record<string, string | undefined> = {
   "1": process.env.NEXT_PUBLIC_L1_CSV,
@@ -13,7 +13,7 @@ const LEVEL_CSV: Record<string, string | undefined> = {
   "6": process.env.NEXT_PUBLIC_L6_CSV,
 };
 
-// シンプルCSVパーサ（ダブルクオート対応）
+// --- simple CSV parser ---
 function parseCSV(csv: string): string[][] {
   const out: string[][] = [];
   let row: string[] = [];
@@ -31,12 +31,16 @@ function parseCSV(csv: string): string[][] {
     } else {
       if (ch === '"') inQuotes = true;
       else if (ch === ",") { row.push(cell); cell = ""; }
-      else if (ch === "\n") { row.push(cell); cell = ""; out.push(row.map(s=>s.replace(/\r$/,""))); row = []; }
+      else if (ch === "\n") { row.push(cell); cell = ""; out.push(row.map(s => s.replace(/\r$/,""))); row = []; }
       else { cell += ch; }
     }
   }
   if (cell.length > 0 || row.length > 0) { row.push(cell); out.push(row); }
   return out;
+}
+
+function canon(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, "");
 }
 
 async function fetchCSV(url?: string): Promise<QA[]> {
@@ -45,13 +49,22 @@ async function fetchCSV(url?: string): Promise<QA[]> {
   const text = await res.text();
   const rows = parseCSV(text);
   if (!rows.length) return [];
-  const header = rows[0].map((h) => h.trim().toLowerCase());
-  const qi = header.findIndex((c) => c === "question");
-  const ai = header.findIndex((c) => c === "answer");
-  return rows.slice(1).filter(r => r[qi] && r[ai]).map(r => ({
-    question: r[qi].trim(),
-    answer: r[ai].trim(),
-  }));
+
+  const header = rows[0].map((h) => canon(h));
+  const qi = header.findIndex((c) => c === "question" || c === "q");
+  const ai = header.findIndex((c) => c === "answer" || c === "a");
+  const qji = header.findIndex((c) => c === "q:ja" || c === "qja" || c === "questionja");
+  const aji = header.findIndex((c) => c === "a:ja" || c === "aja" || c === "answerja");
+
+  return rows
+    .slice(1)
+    .filter((r) => r[qi] && r[ai])
+    .map((r) => ({
+      question: r[qi]?.trim() ?? "",
+      answer:   r[ai]?.trim() ?? "",
+      qJa: qji >= 0 ? (r[qji]?.trim() ?? "") : undefined,
+      aJa: aji >= 0 ? (r[aji]?.trim() ?? "") : undefined,
+    }));
 }
 
 export default async function LevelPage({
@@ -61,29 +74,26 @@ export default async function LevelPage({
   params: Promise<{ level: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  // Next 15: params / searchParams は Promise
   const { level } = await params;
   const sp = await searchParams;
-  const mode = typeof sp.mode === "string" ? sp.mode : "text"; // "text" | "quest"
-
+  const mode = typeof sp.mode === "string" ? sp.mode : "quest"; // ← Questを先に
   const url = LEVEL_CSV[level];
   const items = await fetchCSV(url);
   const levelNum = Number(level) || 1;
 
-  // モード切替 UI（クエリを付けてリンク）
   const ModeTabs = (
     <div className="mb-4 flex gap-2">
-      <a
-        href={`/pingpong-training/level/${levelNum}?mode=text`}
-        className={`px-3 py-1.5 rounded-xl border text-sm ${mode !== "quest" ? "bg-black text-white" : ""}`}
-      >
-        📝 Text
-      </a>
       <a
         href={`/pingpong-training/level/${levelNum}?mode=quest`}
         className={`px-3 py-1.5 rounded-xl border text-sm ${mode === "quest" ? "bg-black text-white" : ""}`}
       >
         🎮 Quest
+      </a>
+      <a
+        href={`/pingpong-training/level/${levelNum}?mode=text`}
+        className={`px-3 py-1.5 rounded-xl border text-sm ${mode !== "quest" ? "bg-black text-white" : ""}`}
+      >
+        📝 Text
       </a>
     </div>
   );
