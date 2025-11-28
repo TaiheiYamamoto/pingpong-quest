@@ -3,30 +3,22 @@
 import { useMemo, useState } from "react";
 
 /* ===== Types (export して他ファイルから再利用) ===== */
-export type Pos = { r: number; c: number };                        // 1 始まり
+export type Pos = { r: number; c: number }; // 1 始まり
 export type MarkerType = "chest" | "gate" | "boss" | "goal";
 export type Marker = { type: MarkerType; pos: Pos };
 
 export type MapMiniProps = {
-  /** 現在地（1始まり） */
   pos: Pos;
-  /** 行・列 */
   rows?: number;
   cols?: number;
-  /** 1タイルのピクセル基準 */
   tile?: number;
-  /** 拡大率 */
   scale?: number;
-  /** ボス時にピンをバウンド */
   bouncing?: boolean;
-  /** 追加マーカー */
   markers?: Marker[];
-  /** 背景タイルテーマ */
   theme?: "sand" | "grass" | "stone";
-  /** 画像の大文字/小文字差異のフォールバックを有効にする */
   caseFallback?: boolean;
-  /** 外部からスタイル/クラスを追加 */
   className?: string;
+  mapImage?: string;
 };
 
 export default function MapMini({
@@ -40,6 +32,7 @@ export default function MapMini({
   theme = "sand",
   caseFallback = true,
   className = "",
+  mapImage,
 }: MapMiniProps) {
   const W = cols * tile * scale;
   const H = rows * tile * scale;
@@ -47,7 +40,6 @@ export default function MapMini({
   const [pinErr, setPinErr] = useState(false);
   const [markerErr, setMarkerErr] = useState<Record<string, boolean>>({});
 
-  // ===== 画像パス（フォールバック込み） =====
   const bgUrl = useMemo(() => {
     const low = `/tiles/${theme}.png`;
     const up = `/Tiles/${theme}.png`;
@@ -64,9 +56,11 @@ export default function MapMini({
     []
   );
 
-  const pinSrcs = useMemo(() => ["/tiles/pin.png", "/Tiles/pin.png"], []);
+  const pinSrcs = useMemo(
+    () => ["/tiles/hero.png", "/Tiles/hero.png"],
+    []
+  );
 
-  // 絶対配置のヘルパ
   const toXY = (p: Pos) => ({
     left: (p.c - 1) * tile * scale,
     top: (p.r - 1) * tile * scale,
@@ -74,7 +68,8 @@ export default function MapMini({
     height: tile * scale,
   });
 
-  const pinSize = Math.max(16, tile * scale * 0.6);
+  // ★ 勇者アイコンをさらに大きく
+  const pinSize = Math.max(24, tile * scale * 0.9);
   const pinOffset = pinSize / 2;
 
   return (
@@ -82,17 +77,25 @@ export default function MapMini({
       className={`relative rounded-2xl border overflow-hidden ${className}`}
       style={{ width: W, height: H }}
     >
-      {/* タイル背景（リピート） */}
+      {/* 背景：mapImage があればそれ、無ければタイルをリピート */}
       <div
         className="absolute inset-0"
-        style={{
-          backgroundImage: bgUrl,
-          backgroundRepeat: "repeat",
-          backgroundSize: `${tile * scale}px ${tile * scale}px`,
-        }}
+        style={
+          mapImage
+            ? {
+                backgroundImage: `url(${mapImage})`,
+                backgroundRepeat: "no-repeat",
+                backgroundSize: "cover",
+              }
+            : {
+                backgroundImage: bgUrl,
+                backgroundRepeat: "repeat",
+                backgroundSize: `${tile * scale}px ${tile * scale}px`,
+              }
+        }
       />
 
-      {/* グリッド（薄い線） */}
+      {/* グリッド */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -115,11 +118,15 @@ export default function MapMini({
             key={key}
             src={src}
             alt={m.type}
-            onError={() =>
-              caseFallback
-                ? setMarkerErr((prev) => ({ ...prev, [key]: !prev[key] }))
-                : undefined
-            }
+            onError={(e) => {
+              if (!caseFallback) return;
+              setMarkerErr((prev) => {
+                const nextUsed = !prev[key];
+                const arr = markerSrcs[m.type];
+                e.currentTarget.src = nextUsed ? arr[1] : arr[0];
+                return { ...prev, [key]: nextUsed };
+              });
+            }}
             style={{
               position: "absolute",
               ...toXY(m.pos),
@@ -131,28 +138,28 @@ export default function MapMini({
         );
       })}
 
-      {/* ピン（画像 or 丸） */}
+      {/* ピン（勇者アイコン or 丸） */}
       {pinErr ? (
         <div
-          className={`absolute rounded-full bg-emerald-700/85 ${bouncing ? "animate-bounce" : ""}`}
+          className={`absolute rounded-full bg-emerald-700/85 ${
+            bouncing ? "animate-bounce" : ""
+          }`}
           style={{
             width: Math.max(8, tile * scale * 0.28),
             height: Math.max(8, tile * scale * 0.28),
-            left: (pos.c - 0.5) * tile * scale - (tile * scale * 0.14),
-            top: (pos.r - 0.5) * tile * scale - (tile * scale * 0.14),
+            left: (pos.c - 0.5) * tile * scale - tile * scale * 0.14,
+            top: (pos.r - 0.5) * tile * scale - tile * scale * 0.14,
             boxShadow: "0 2px 6px rgba(0,0,0,.25)",
           }}
           title="you"
         />
       ) : (
         <img
-          src={caseFallback ? pinSrcs[0] : "/tiles/pin.png"}
-          alt="pin"
-          onError={() => {
-            if (caseFallback && !pinErr) {
-              // 1回目のエラーで大文字パスへ差し替えを試す
-              (event?.currentTarget as HTMLImageElement | undefined)?.setAttribute("src", pinSrcs[1]);
-              setPinErr(true); // 二度目以降は丸にフォールバック
+          src={caseFallback ? pinSrcs[0] : "/tiles/hero.png"}
+          alt="hero"
+          onError={(e) => {
+            if (caseFallback && e.currentTarget.src.endsWith(pinSrcs[0])) {
+              e.currentTarget.src = pinSrcs[1];
             } else {
               setPinErr(true);
             }

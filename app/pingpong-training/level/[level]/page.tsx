@@ -1,9 +1,20 @@
 // app/pingpong-training/level/[level]/page.tsx
 import Trainer from "../../_components/Trainer";
-import PingPongQuest from "@/pingpong-training/_components/pingpong/PingPongQuest";
+import PingPongQuest from "../../_components/pingpong/PingPongQuest";
 
 export type QA = { question: string; answer: string; qJa?: string; aJa?: string };
 
+// ▼ Level別の問題数
+const QUESTION_LIMIT: Record<number, number> = {
+  1: 3,
+  2: 5,
+  3: 6,
+  4: 8,
+  5: 9,
+  6: 10,
+};
+
+// ▼ 通常版の CSV URL
 const LEVEL_CSV: Record<string, string | undefined> = {
   "1": process.env.NEXT_PUBLIC_L1_CSV,
   "2": process.env.NEXT_PUBLIC_L2_CSV,
@@ -13,7 +24,7 @@ const LEVEL_CSV: Record<string, string | undefined> = {
   "6": process.env.NEXT_PUBLIC_L6_CSV,
 };
 
-// --- simple CSV parser ---
+/* --- simple CSV parser --- */
 function parseCSV(csv: string): string[][] {
   const out: string[][] = [];
   let row: string[] = [];
@@ -25,17 +36,34 @@ function parseCSV(csv: string): string[][] {
     const next = csv[i + 1];
 
     if (inQuotes) {
-      if (ch === '"' && next === '"') { cell += '"'; i++; }
-      else if (ch === '"') { inQuotes = false; }
-      else { cell += ch; }
+      if (ch === '"' && next === '"') {
+        cell += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        cell += ch;
+      }
     } else {
       if (ch === '"') inQuotes = true;
-      else if (ch === ",") { row.push(cell); cell = ""; }
-      else if (ch === "\n") { row.push(cell); cell = ""; out.push(row.map(s => s.replace(/\r$/,""))); row = []; }
-      else { cell += ch; }
+      else if (ch === ",") {
+        row.push(cell);
+        cell = "";
+      } else if (ch === "\n") {
+        row.push(cell);
+        cell = "";
+        out.push(row);
+        row = [];
+      } else {
+        cell += ch;
+      }
     }
   }
-  if (cell.length > 0 || row.length > 0) { row.push(cell); out.push(row); }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    out.push(row);
+  }
   return out;
 }
 
@@ -53,55 +81,67 @@ async function fetchCSV(url?: string): Promise<QA[]> {
   const header = rows[0].map((h) => canon(h));
   const qi = header.findIndex((c) => c === "question" || c === "q");
   const ai = header.findIndex((c) => c === "answer" || c === "a");
-  const qji = header.findIndex((c) => c === "q:ja" || c === "qja" || c === "questionja");
-  const aji = header.findIndex((c) => c === "a:ja" || c === "aja" || c === "answerja");
+  const qji = header.findIndex((c) => c === "q:ja" || c === "qja");
+  const aji = header.findIndex((c) => c === "a:ja" || c === "aja");
 
-  return rows
-    .slice(1)
-    .filter((r) => r[qi] && r[ai])
-    .map((r) => ({
-      question: r[qi]?.trim() ?? "",
-      answer:   r[ai]?.trim() ?? "",
-      qJa: qji >= 0 ? (r[qji]?.trim() ?? "") : undefined,
-      aJa: aji >= 0 ? (r[aji]?.trim() ?? "") : undefined,
-    }));
+  return rows.slice(1).map((r) => ({
+    question: r[qi] ?? "",
+    answer: r[ai] ?? "",
+    qJa: qji >= 0 ? r[qji] : "",
+    aJa: aji >= 0 ? r[aji] : "",
+  }));
 }
 
-export default async function LevelPage({
-  params,
-  searchParams,
-}: {
+// ★ Next.js が期待している PageProps に合わせて、params/searchParams を Promise にする
+type LevelPageProps = {
   params: Promise<{ level: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+};
+
+export default async function LevelPage({ params, searchParams }: LevelPageProps) {
+  // Next.js から渡される params/searchParams を await でほどく
   const { level } = await params;
   const sp = await searchParams;
-  const mode = typeof sp.mode === "string" ? sp.mode : "quest"; // ← Questを先に
-  const url = LEVEL_CSV[level];
-  const items = await fetchCSV(url);
-  const levelNum = Number(level) || 1;
 
+  const levelNum = Number(level) || 1;
+  const mode = typeof sp.mode === "string" ? sp.mode : "quest";
+
+  const url = LEVEL_CSV[level];
+  const allItems = await fetchCSV(url);
+
+  // Level ごとに問題数調整
+  const limit = QUESTION_LIMIT[levelNum] ?? allItems.length;
+  const items = allItems.slice(0, limit);
+
+  /* ---- UI ---- */
   const ModeTabs = (
     <div className="mb-4 flex gap-2">
       <a
         href={`/pingpong-training/level/${levelNum}?mode=quest`}
-        className={`px-3 py-1.5 rounded-xl border text-sm ${mode === "quest" ? "bg-black text-white" : ""}`}
+        className={`px-3 py-1.5 rounded-xl border text-sm ${
+          mode === "quest" ? "bg-black text-white" : ""
+        }`}
       >
         🎮 Quest
       </a>
       <a
         href={`/pingpong-training/level/${levelNum}?mode=text`}
-        className={`px-3 py-1.5 rounded-xl border text-sm ${mode !== "quest" ? "bg-black text-white" : ""}`}
+        className={`px-3 py-1.5 rounded-xl border text-sm ${
+          mode !== "quest" ? "bg-black text-white" : ""
+        }`}
       >
-        📝 Text
+        📝 Training
       </a>
     </div>
   );
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Level {levelNum}</h1>
+      <h1 className="text-2xl font-bold">
+        PingPong English Quest — Level {levelNum}
+      </h1>
       {ModeTabs}
+
       {mode === "quest" ? (
         <PingPongQuest level={levelNum} items={items} />
       ) : (
